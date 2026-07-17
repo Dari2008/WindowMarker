@@ -353,35 +353,25 @@ def _footprint_anchor(leds: list, width_mm: float, height_mm: float) -> tuple:
     """Translationsvektor (mm, im rohen Koordinatensystem der LEDs -- also
     VOR der minx/miny-Normalisierung aus variant_bbox), um die (width_mm x
     height_mm grosse) Footprint-Kontur so zu verschieben, dass sie
-    HORIZONTAL zentriert ueber der tatsaechlichen Ausdehnung der LEDs liegt
-    (inkl. LED_WIDTH_MM/2 Rand je Seite, identische Rechnung wie
-    windowMarker/dxfExport.py's export_dxf). VERTIKAL sitzen die LEDs
-    windowMarker.footprintScale.LED_OFFSET_TOP_MM (FEST, siehe dort --
-    frueher ein PRO FOOTPRINT-NAME konfigurierbarer Wert) unterhalb der
-    Footprint-Oberkante -- je nach Platinenlayout brauchen die LEDs dort
-    typischerweise etwas Abstand zum Rand, statt buendig an der Oberkante
-    zu sitzen.
+    HORIZONTAL zentriert ueber ALLEN LEDs der Vorlage liegt (inkl.
+    LED_WIDTH_MM/2 Rand je Seite), VERTIKAL footprintScale.LED_OFFSET_TOP_MM
+    oberhalb der Anker-LED (der mit dem kleinsten x_mm/y_mm).
 
-    min_y verwendet BEWUSST KEIN LED_WIDTH_MM/2-Polster (anders als min_x/
-    max_x) -- diese Funktion dient nur noch als STARRER Anker waehrend des
-    Ziehens (siehe _footprint_is_being_dragged/footprint_image_points), der
-    beim Loslassen auf den echten fenster-basierten Anker (_footprint_anchor_mm,
-    dieselbe Formel wie windowMarker/dxfExport._footprint_anchor) einrastet.
-    Mit dem Polster wich die Oberkante hier um LED_WIDTH_MM/2 (2.5mm) vom
-    fenster-basierten Ergebnis ab -- sichtbar als kurzer Sprung nach oben
-    waehrend des Ziehens, der sich beim Loslassen wieder korrigierte."""
+    Delegiert an footprintScale.led_footprint_offset_mm -- DIESELBE Formel,
+    die auch windowMarker/dxfExport.py's export_dxf fuer den tatsaechlichen
+    Export verwendet, damit Editor-Vorschau und Export NIEMALS auseinander-
+    laufen, egal welche echten Fenster eine Platzierung gerade beleuchtet
+    (siehe dortige Docstrings -- der Footprint haengt STARR an den LEDs,
+    nicht an den Fenstern)."""
     fp_left, fp_top, fp_right, _fp_bottom = _footprint_geometry_bbox(width_mm, height_mm)
-    fp_w = fp_right - fp_left
     if not leds:
         return -fp_left, -fp_top
-    led_offset_top_mm = footprintScale.LED_OFFSET_TOP_MM if footprintScale is not None else 0.0
-    min_x = min(l['x_mm'] for l in leds) - LED_WIDTH_MM / 2
-    max_x = max(l['x_mm'] for l in leds) + LED_WIDTH_MM / 2
-    min_y = min(l['y_mm'] for l in leds)
-    size_x = max_x - min_x
-    desired_left = min_x + (size_x - fp_w) / 2
-    desired_top = min_y - led_offset_top_mm
-    return desired_left - fp_left, desired_top - fp_top
+    if footprintScale is None:
+        return -fp_left, -fp_top
+    dx, dy, _mirror_w = footprintScale.led_footprint_offset_mm(leds, width_mm, height_mm, LED_WIDTH_MM)
+    anchor_x = min(l['x_mm'] for l in leds)
+    anchor_y = min(l['y_mm'] for l in leds)
+    return (anchor_x + dx) - fp_left, (anchor_y + dy) - fp_top
 
 
 def _footprint_geometry_mm(polylines: list, ox: float, oy: float) -> list:
@@ -408,50 +398,6 @@ def _footprint_geometry_image(polylines: list, ox: float, oy: float, minx: float
     return out
 
 
-def _placement_window_rects_mm(placement: dict, windows: list, px_per_mm: float) -> list:
-    """Die mm-Rechtecke (x, y, w, h) der Fenster, die `placement` TATSAECHLICH
-    versorgt (ueber placement['leds'][].windowIndex in `windows`) -- exakt
-    dieselbe Quelle wie windowMarker/dxfExport.get_placed_leds(), nur direkt
-    aus dem Live-Zustand (self.windows/self.placements) statt aus einer
-    gespeicherten <name>.json gelesen. Gemeinsame Grundlage fuer
-    _footprint_anchor_mm(), damit der Footprint-Anker im Editor GENAU
-    denselben echten Fenstern folgt wie beim tatsaechlichen Export."""
-    rects = []
-    for led in placement.get('leds', []):
-        if not led.get('enabled'):
-            continue
-        wi = led.get('windowIndex')
-        if wi is None or not (0 <= wi < len(windows)):
-            continue
-        w = windows[wi]
-        rects.append({'x': w['x'] / px_per_mm, 'y': w['y'] / px_per_mm,
-                     'w': w['w'] / px_per_mm, 'h': w['h'] / px_per_mm})
-    return rects
-
-
-def _footprint_anchor_mm(window_rects: list, width_mm: float, height_mm: float) -> tuple | None:
-    """Wie windowMarker/dxfExport._footprint_anchor -- (links, oben) in
-    ECHTEN, ABSOLUTEN Haus-mm, direkt aus `window_rects` (siehe
-    _placement_window_rects_mm) berechnet, NICHT aus der generischen
-    Varianten-LED-Vorlage (siehe _footprint_anchor). Beide Berechnungen
-    (hier UND in dxfExport.py) muessen exakt uebereinstimmen, sonst landet
-    der im Editor angezeigte Footprint an einer leicht anderen Stelle als
-    der tatsaechlich exportierte -- daher hier bewusst dieselbe Formel
-    (Fenster-Aussenkanten, nicht LED_WIDTH_MM/2 wie bei _footprint_anchor).
-    None, wenn `window_rects` leer ist (z.B. im Varianten-Designer, wo es
-    keine echten Fenster gibt -- dort gilt weiter _footprint_anchor())."""
-    if not window_rects:
-        return None
-    min_x = min(r['x'] for r in window_rects)
-    max_x = max(r['x'] + r['w'] for r in window_rects)
-    min_y = min(r['y'] for r in window_rects)
-    size_x = max_x - min_x
-    desired_left = min_x + (size_x - width_mm) / 2
-    led_offset_top_mm = footprintScale.LED_OFFSET_TOP_MM if footprintScale is not None else 0.0
-    desired_top = min_y - led_offset_top_mm
-    return desired_left, desired_top
-
-
 def footprint_points_mm(leds: list, width_mm: float, height_mm: float) -> list:
     """Footprint-Konturpunkte (eine Liste je Polylinie, mit 'closed'-Flag) im
     selben rohen mm-Koordinatensystem wie die LEDs (x_mm/y_mm) -- zentriert
@@ -462,69 +408,28 @@ def footprint_points_mm(leds: list, width_mm: float, height_mm: float) -> list:
     return _footprint_geometry_mm(_load_footprint_polylines(width_mm, height_mm), ox, oy)
 
 
-def _footprint_points_from_anchor_px(polylines: list, left_px: float, top_px: float,
-                                     width_mm: float, px_per_mm: float, flipped: bool) -> list:
-    """Baut Footprint-Polylinien direkt aus einem BEREITS in Bild-px
-    vorliegenden Anker (linke obere Ecke) -- gemeinsame Transform fuer den
-    fenster-basierten Pfad UND den live erfassten Zieh-Anker (siehe
-    footprint_image_points/App._footprint_drag_override_px)."""
-    out = []
-    for pts, closed in polylines:
-        spts = []
-        for fx, fy in pts:
-            lx = width_mm - fx if flipped else fx
-            spts.append((left_px + lx * px_per_mm, top_px + fy * px_per_mm))
-        out.append((spts, closed))
-    return out
-
-
 def footprint_image_points(variant: dict, x: float, y: float, px_per_mm: float,
-                           flipped: bool = False, placement: dict | None = None,
-                           windows: list | None = None,
-                           anchor_override_px: tuple | None = None) -> list:
+                           flipped: bool = False, placement: dict | None = None) -> list:
     """Wie led_image_positions/connector_positions, aber fuer die komplette
     Footprint-Kontur: eine Liste von (Punktliste, closed)-Paaren, eine je
     Polylinie, in Bild-px an der Platzierung ausgerichtet.
 
+    Die LEDs sitzen IMMER an einer FESTEN Position relativ zum Footprint
+    (mittig, siehe _footprint_anchor -- aus der Varianten-LED-Vorlage
+    berechnet, NICHT aus real zugewiesenen Fenstern) -- nur die Platzierung
+    ALS GANZES (Footprint + LEDs zusammen) bewegt sich, wenn man sie zieht.
+    Footprint und LEDs haengen also STARR zusammen, unabhaengig davon,
+    welche Fenster diese Platzierung gerade tatsaechlich beleuchtet (eine
+    fruehere Version zentrierte den Footprint stattdessen ueber den real
+    zugewiesenen Fenstern -- dadurch konnte er beim Ziehen/Loslassen von der
+    LED-Position abweichen/"zurueckspringen", je nachdem, welche Fenster
+    gerade als beruehrt galten).
+
     `placement` liefert eine PRO-PLATZIERUNG-Groesse (`width_mm`/
     `height_mm`, siehe App._draw_footprint); fehlt sie, gilt der Default
-    der Variante (siehe resolve_footprint_size).
-
-    `anchor_override_px` ((left_px, top_px)): WENN gegeben, wird GENAU
-    dieser Anker verwendet -- weder `windows` noch die Varianten-Vorlage
-    spielen dann eine Rolle. Fuer den LIVE-Zug einer Platzierung (siehe
-    App._footprint_drag_override_px): der bei Zugbeginn erfasste, echte
-    fenster-basierte Anker (_capture_footprint_anchor_px) wird waehrend des
-    Ziehens nur um die Mausbewegung verschoben, statt bei jedem Redraw neu
-    (und je nach Fenster-Zuordnung ANDERS) berechnet zu werden -- das
-    verhindert jeden sichtbaren Sprung, sowohl beim Anfassen als auch beim
-    Loslassen.
-
-    `windows` (self.windows der App): OHNE `anchor_override_px`, aber MIT
-    `windows` (und `placement` hat echte Fenster zugewiesen), wird der
-    Anker aus DEREN tatsaechlicher Ausdehnung berechnet
-    (_footprint_anchor_mm/_placement_window_rects_mm -- exakt dieselbe
-    Formel wie windowMarker/dxfExport._footprint_anchor), damit der im
-    Editor gezeichnete Footprint GENAU an derselben Stelle landet wie im
-    tatsaechlichen DXF-Export. OHNE `windows` (z.B. im Varianten-Designer,
-    wo es keine echten Fenster gibt) faellt es auf die aeltere, generische
-    Varianten-LED-Vorlage zurueck (_footprint_anchor)."""
+    der Variante (siehe resolve_footprint_size)."""
     width_mm, height_mm = resolve_footprint_size(variant, placement)
     polylines = _load_footprint_polylines(width_mm, height_mm)
-
-    if anchor_override_px is not None:
-        left_px, top_px = anchor_override_px
-        return _footprint_points_from_anchor_px(polylines, left_px, top_px, width_mm, px_per_mm, flipped)
-
-    anchor_mm = None
-    if windows is not None and placement is not None:
-        rects = _placement_window_rects_mm(placement, windows, px_per_mm)
-        anchor_mm = _footprint_anchor_mm(rects, width_mm, height_mm)
-    if anchor_mm is not None:
-        left_mm, top_mm = anchor_mm
-        return _footprint_points_from_anchor_px(polylines, left_mm * px_per_mm, top_mm * px_per_mm,
-                                                width_mm, px_per_mm, flipped)
-
     minx, miny, w_mm, _ = variant_bbox(variant)
     ox, oy = _footprint_anchor(variant.get('leds', []), width_mm, height_mm)
     return _footprint_geometry_image(polylines, ox, oy,
@@ -1136,7 +1041,6 @@ class App:
         self._space_used_for_pan = False  # unterscheidet kurzes Antippen (Spiegeln) von Halten+Ziehen (Pan)
         self._pan_ref = None
         self._move_ref = None
-        self._drag_footprint_anchor = None   # (left_px, top_px, x0, y0) bei Zugbeginn, siehe _capture_footprint_anchor_px
         self._resize_ref = None       # (edge, start_x, start_y, w0_mm, h0_mm) siehe _hit_footprint_edge
         self._hover = None            # (ix, iy) Anker der Platzierungs-Vorschau (Schatten)
 
@@ -1551,19 +1455,29 @@ class App:
         public/houses (siehe images.json) dessen DXF-Datei(en) (LED-/
         Platinen-Platzierung + Gebaeudekontur-Teile, siehe dxfExport.py),
         seine Stueckliste als CSV (csvExport.py), je tatsaechlich
-        vorkommender Footprint-Groesse eine EIGENE footprint-/bottomplate-/
-        sideplate-*.dxf (siehe footprintScale.export_all_footprints) UND ein
-        kombiniertes Teile-Blatt, das Bodenplatten UND Aussen-/Innen-
-        Seitenteile in der Stueckzahl aus der Stueckliste (siehe
-        csvExport.count_footprint_sizes, dieselbe Zaehlung wie in
-        get_part_counts, damit CSV und Blatt nie auseinanderlaufen) PLUS je
+        vorkommender Bodenplatten-/Seitenteil-Groesse (width_mm bzw.
+        height_mm, siehe footprintScale.get_bottom_plate_points/
+        get_side_plate_points) eine EIGENE Datei UND ein kombiniertes
+        Teile-Blatt, das dieselben Bodenplatten/Aussen-/Innen-Seitenteile in
+        der Stueckzahl aus der Stueckliste (siehe csvExport.
+        count_footprint_sizes, dieselbe Zaehlung wie in get_part_counts,
+        damit CSV, Einzeldateien und Blatt nie auseinanderlaufen) PLUS je
         EINE Referenz-Kopie der Hauszeichnung (Kontur mit Fensterscheiben UND
         Kontur ohne) vereint -- die Haus-Kopien werden NICHT mit ihrer
         Stueckliste-Stueckzahl multipliziert (die bezieht sich auf reale
-        Material-Zuschnitte, nicht auf Kopien in dieser Uebersicht). OHNE die
-        Footprints -- die werden nur als einzelne Dateien geschrieben (siehe
-        export_all_footprints), nicht aufs Blatt gepackt. Alles auf EINER
-        DXF, in Zeilen gepackt
+        Material-Zuschnitte, nicht auf Kopien in dieser Uebersicht). OHNE den
+        Footprint -- der wird NICHT als eigene Datei geschrieben (nur als
+        Skizze/Ausschnitt direkt in die Hauszeichnung eingefuegt, siehe
+        dxfExport._insert_footprints), also auch nicht aufs Blatt gepackt.
+
+        JEDE geschriebene Datei (ausser der Hauszeichnung selbst und dem
+        Teile-Blatt) traegt ihre Stueckzahl als Praefix im Dateinamen --
+        'quantity_name.dxf' (z.B. '6_bottomplate-75mm.dxf',
+        '4_sideplate-outer-33mm.dxf') --, damit auf einen Blick klar ist,
+        wie viele Kopien davon zu schneiden sind, ohne extra in der CSV
+        nachschauen zu muessen.
+
+        Alles (Teile-Blatt) auf EINER DXF, in Zeilen gepackt
         (footprintScale.nest_parts_sheet, PART_SPACING_MM Abstand, ein
         ungefaehr rechteckiges statt ein beliebig langes Blatt). ALLE Dateien
         landen in DIESES Hauses EIGENEM 'exported'-Unterordner (public/
@@ -1587,6 +1501,7 @@ class App:
         fw = (variant or {}).get('footprint_width_mm')
         fh = (variant or {}).get('footprint_height_mm')
         variant_size = (fw, fh) if fw and fh else None
+        variant_leds = (variant or {}).get('leds') or []
 
         try:
             names = json.loads(index_path.read_text(encoding='utf-8')).get('images', [])
@@ -1609,23 +1524,41 @@ class App:
 
                 if entries:
                     written.append(dxfExport.export_dxf(
-                        entries, outline, exported_dir / f'{name}.dxf', variant_size))
+                        entries, outline, exported_dir / f'{name}.dxf', variant_size, variant_leds))
                     size_counts = csvExport.count_footprint_sizes(entries, variant_size)
                     if size_counts:
-                        sizes_by_name = {f'footprint-{dxfExport.format_footprint_size(w, h)}': (w, h)
-                                         for (w, h) in size_counts}
-                        written.extend(footprintScale.export_all_footprints(sizes_by_name, exported_dir))
-
+                        # Bodenplatte haengt NUR von width_mm ab, Seitenteile
+                        # NUR von height_mm -- je EINE Datei pro distinktem
+                        # Wert (nicht pro (width_mm,height_mm)-Paar), sonst
+                        # wuerde dieselbe Datei mehrfach mit unterschiedlicher
+                        # Stueckzahl im Namen ueberschrieben (siehe
+                        # csvExport.get_part_counts, dieselbe Aufsummierung).
                         width_counts: dict = {}
+                        height_counts: dict = {}
                         for (width_mm, height_mm), count in size_counts.items():
                             width_counts[width_mm] = width_counts.get(width_mm, 0) + count
+                            height_counts[height_mm] = height_counts.get(height_mm, 0) + count
+
                         for width_mm, count in sorted(width_counts.items()):
-                            sheet_items.append((footprintScale.get_bottom_plate_points(width_mm), count))
-                        for (width_mm, height_mm), count in sorted(size_counts.items()):
-                            sheet_items.append((footprintScale.get_side_plate_points(height_mm, inner=False),
-                                              count * csvExport.SIDE_PIECES_PER_PLACEMENT))
-                            sheet_items.append((footprintScale.get_side_plate_points(height_mm, inner=True),
-                                              count * csvExport.INNER_SIDE_PIECES_PER_PLACEMENT))
+                            bp_count = count * csvExport.BOTTOM_PLATES_PER_PLACEMENT
+                            bp_doc = footprintScale.get_bottom_plate_points(width_mm)
+                            bp_path = exported_dir / f'{bp_count}_bottomplate-{width_mm:g}mm.dxf'
+                            bp_path.parent.mkdir(parents=True, exist_ok=True)
+                            bp_doc.saveas(str(bp_path))
+                            written.append(bp_path)
+                            sheet_items.append((bp_doc, count))
+
+                        for height_mm, count in sorted(height_counts.items()):
+                            for kind, inner, multiplier in (
+                                ('outer', False, csvExport.SIDE_PIECES_PER_PLACEMENT),
+                                ('inner', True, csvExport.INNER_SIDE_PIECES_PER_PLACEMENT),
+                            ):
+                                sp_count = count * multiplier
+                                sp_doc = footprintScale.get_side_plate_points(height_mm, inner=inner)
+                                sp_path = exported_dir / f'{sp_count}_sideplate-{kind}-{height_mm:g}mm.dxf'
+                                sp_doc.saveas(str(sp_path))
+                                written.append(sp_path)
+                                sheet_items.append((sp_doc, sp_count))
 
                 if outline is not None:
                     windows = [
@@ -1633,10 +1566,11 @@ class App:
                          'w': w['w'] / px_per_mm, 'h': w['h'] / px_per_mm}
                         for w in house_data.get('windows', [])
                     ]
-                    panes_path = exported_dir / f'{name}_outline_with_panes.dxf'
+                    panes_path = exported_dir / f'{csvExport.OUTLINE_WITH_PANES_COUNT}_{name}_outline_with_panes.dxf'
                     written.append(dxfExport.export_outline_with_panes_dxf(
-                        outline, windows, panes_path, entries, variant_size))
-                    outline_path = exported_dir / f'{name}_outline.dxf'
+                        outline, windows, panes_path, entries, variant_size, variant_leds))
+                    outline_count = csvExport.OUTLINE_HORIZONTAL_COUNT + csvExport.OUTLINE_VERTICAL_COUNT
+                    outline_path = exported_dir / f'{outline_count}_{name}_outline.dxf'
                     written.append(dxfExport.export_outline_only_dxf(outline, outline_path))
 
                     # Die Hauszeichnung selbst gehoert mit aufs Teile-Blatt
@@ -2546,73 +2480,24 @@ class App:
         dout_pt = self._draw_one_connector_box(cv, i2s, *dout_img, px_per_mm, 'OUT', preview)
         return din_pt, dout_pt
 
-    def _footprint_is_being_dragged(self, p: dict) -> bool:
-        """True, wenn `p` GERADE per Maus verschoben wird (self._move_ref
-        aktiv UND `p` die aktuell ausgewaehlte Platzierung ist) -- siehe
-        _draw_footprint/_footprint_screen_bbox."""
-        return bool(self._move_ref) and 0 <= self.sel_idx < len(self.placements) \
-            and self.placements[self.sel_idx] is p
-
-    def _capture_footprint_anchor_px(self, p: dict):
-        """Erfasst den AKTUELLEN, fenster-basierten Footprint-Anker von `p`
-        als (left_px, top_px, x0, y0) -- aufgerufen bei ZUGBEGINN (siehe
-        _cv_dn). Waehrend des anschliessenden Ziehens wird dieser Anker NUR
-        um genau die Mausbewegung (p['x']/['y'] minus x0/y0) verschoben
-        (siehe _footprint_drag_override_px), STATT bei jedem Redraw neu ueber
-        eine ANDERE Formel (die alte Varianten-Vorlage, _footprint_anchor)
-        berechnet zu werden -- dadurch sind Start- UND Endwert des Ziehens
-        GARANTIERT exakt derselbe (echte, fenster-basierte) Anker, ohne
-        jeden sichtbaren Sprung beim Anfassen oder Loslassen. None, wenn
-        `p` (noch) keine echten Fenster zugewiesen hat (z.B. eine frisch
-        platzierte Variante) -- dann greift beim Zeichnen weiterhin der
-        alte Vorlagen-Fallback in footprint_image_points."""
-        if not self.variant:
-            return None
-        px_per_mm = self.px_per_mm()
-        width_mm, height_mm = resolve_footprint_size(self.variant, p)
-        rects = _placement_window_rects_mm(p, self.windows, px_per_mm)
-        anchor_mm = _footprint_anchor_mm(rects, width_mm, height_mm)
-        if anchor_mm is None:
-            return None
-        left_mm, top_mm = anchor_mm
-        return left_mm * px_per_mm, top_mm * px_per_mm, p['x'], p['y']
-
-    def _footprint_drag_override_px(self, p: dict):
-        """(left_px, top_px) fuer footprint_image_points' `anchor_override_px`,
-        WENN `p` gerade gezogen wird UND bei Zugbeginn ein Anker erfasst
-        wurde (siehe _capture_footprint_anchor_px) -- sonst None (dann
-        greifen die normalen Pfade in footprint_image_points: fenster-
-        basiert im Ruhezustand, alte Vorlage waehrend des Ziehens ohne
-        zugewiesene Fenster)."""
-        if not self._footprint_is_being_dragged(p) or self._drag_footprint_anchor is None:
-            return None
-        left0_px, top0_px, x0, y0 = self._drag_footprint_anchor
-        return left0_px + (p['x'] - x0), top0_px + (p['y'] - y0)
-
     def _draw_footprint(self, cv: tk.Canvas, i2s, p: dict, variant: dict,
                         preview: bool = False):
         """Zeichnet die (generierte, siehe windowMarker/footprintScale.py)
         Footprint-Kontur an der tatsaechlichen Bild-Position einer
         Platzierung -- mittig ueber der LED-Ausdehnung (siehe
         _footprint_anchor), damit sichtbar ist, wo die physische Platine
-        wirklich hinragt (nicht nur die einzelnen LED-Punkte). Welche
-        Footprint-Groesse, ist PRO PLATZIERUNG eintragbar (`p['width_mm']`/
-        `p['height_mm']`, siehe _add_card) -- fehlt sie, gilt der Default
-        der Variante (siehe resolve_footprint_size). preview=True (Hover-
-        Schattenvorschau) zeichnet sie gedaempft/gestrichelt statt als
-        durchgezogene rote Linie.
-
-        Waehrend des Ziehens (siehe _footprint_drag_override_px) wird der
-        bei Zugbeginn erfasste, echte Anker nur um die Mausbewegung
-        verschoben -- STARR, die LED bleibt darin zentriert, aber OHNE
-        jeden Sprung, weder beim Anfassen noch beim Loslassen (_cv_up ruft
-        _auto_assign() auf, wonach der normale fenster-basierte Anker --
-        exakt die Position, die auch der DXF-Export verwendet -- wieder
-        uebernimmt)."""
+        wirklich hinragt (nicht nur die einzelnen LED-Punkte). Footprint und
+        LEDs haengen STARR zusammen (fester Anker aus der Varianten-Vorlage,
+        siehe footprint_image_points) -- die ganze Platzierung bewegt sich
+        beim Ziehen als EIN Stueck, unabhaengig davon, welche Fenster sie
+        gerade tatsaechlich beleuchtet. Welche Footprint-Groesse, ist PRO
+        PLATZIERUNG eintragbar (`p['width_mm']`/`p['height_mm']`, siehe
+        _add_card) -- fehlt sie, gilt der Default der Variante (siehe
+        resolve_footprint_size). preview=True (Hover-Schattenvorschau)
+        zeichnet sie gedaempft/gestrichelt statt als durchgezogene rote
+        Linie."""
         poly_points = footprint_image_points(
-            variant, p['x'], p['y'], self.px_per_mm(), p.get('flipped', False),
-            placement=p, windows=self.windows,
-            anchor_override_px=self._footprint_drag_override_px(p))
+            variant, p['x'], p['y'], self.px_per_mm(), p.get('flipped', False), placement=p)
         color = C['dim'] if preview else C['red']
         draw_footprint_polylines(cv, i2s, poly_points, color=color,
                                  dash=(2, 2) if preview else None)
@@ -2886,9 +2771,7 @@ class App:
         if not variant:
             return None
         poly_points = footprint_image_points(
-            variant, p['x'], p['y'], self.px_per_mm(), p.get('flipped', False),
-            placement=p, windows=self.windows,
-            anchor_override_px=self._footprint_drag_override_px(p))
+            variant, p['x'], p['y'], self.px_per_mm(), p.get('flipped', False), placement=p)
         if not poly_points or not poly_points[0][0]:
             return None
         screen_pts = [self._i2s(ix, iy) for ix, iy in poly_points[0][0]]
@@ -2901,30 +2784,18 @@ class App:
         Platzierung `p` in Bild-px, WENN sie die gegebene width_mm/height_mm
         haette -- unabhaengig davon, was aktuell in p['width_mm']/['height_mm']
         steht. Fuer die Ueberlappungspruefung beim Resizen (siehe _cv_mv), OHNE
-        die Platzierung dafuer schon zu veraendern. None ohne Variante.
-        Verwendet denselben Fenster-basierten Anker wie footprint_image_points
-        (siehe dort), damit die Resize-Ueberlappungspruefung exakt an derselben
-        Kontur haengt, die auch tatsaechlich gezeichnet wird."""
+        die Platzierung dafuer schon zu veraendern. None ohne Variante."""
         variant = self.variant
         if not variant:
             return None
         px_per_mm = self.px_per_mm()
+        minx, miny, w_mm, _ = variant_bbox(variant)
+        ox, oy = _footprint_anchor(variant.get('leds', []), width_mm, height_mm)
         outline = [(0.0, 0.0), (width_mm, 0.0), (width_mm, height_mm), (0.0, height_mm)]
-        flipped = p.get('flipped', False)
-
-        rects = _placement_window_rects_mm(p, self.windows, px_per_mm)
-        anchor_mm = _footprint_anchor_mm(rects, width_mm, height_mm)
-        if anchor_mm is not None:
-            left_mm, top_mm = anchor_mm
-            pts = [((left_mm + (width_mm - fx if flipped else fx)) * px_per_mm,
-                   (top_mm + fy) * px_per_mm) for fx, fy in outline]
-        else:
-            minx, miny, w_mm, _ = variant_bbox(variant)
-            ox, oy = _footprint_anchor(variant.get('leds', []), width_mm, height_mm)
-            transformed = _footprint_geometry_image(
-                [(outline, True)], ox, oy, minx, miny, w_mm, p['x'], p['y'], px_per_mm, flipped)
-            pts = transformed[0][0]
-
+        transformed = _footprint_geometry_image(
+            [(outline, True)], ox, oy, minx, miny, w_mm, p['x'], p['y'], px_per_mm,
+            p.get('flipped', False))
+        pts = transformed[0][0]
         xs = [x for x, _y in pts]
         ys = [y for _x, y in pts]
         return min(xs), min(ys), max(xs), max(ys)
@@ -3217,7 +3088,6 @@ class App:
             p = self.placements[hits[0]]
             ix, iy = self._s2i(e.x, e.y)
             self._move_ref = (ix - p['x'], iy - p['y'])
-            self._drag_footprint_anchor = self._capture_footprint_anchor_px(p)
             self._render_placements()
             self._render_cv()
         else:
@@ -3252,14 +3122,6 @@ class App:
             if variant:
                 ax, ay = self._snap_anchor(ax, ay, variant, p.get('flipped', False))
             p['x'], p['y'] = round(ax, 1), round(ay, 1)
-            # windowIndex-Zuordnung LIVE waehrend des Ziehens neu berechnen
-            # (sonst nur bei _cv_up) -- der Footprint haengt jetzt am
-            # tatsaechlich zugewiesenen Fenster (siehe footprint_image_points/
-            # _footprint_anchor_mm), OHNE dies wuerde er beim Ziehen an der
-            # alten Position kleben bleiben, waehrend die LED schon sichtbar
-            # woanders ist. _render_list_and_save() (Disk-Schreiben) bleibt
-            # bewusst NUR bei _cv_up, nicht bei jedem Mausschritt hier.
-            self._auto_assign()
             self._render_cv()
             return
         if self._resize_ref:
@@ -3332,7 +3194,6 @@ class App:
             return
         if self._move_ref:
             self._move_ref = None
-            self._drag_footprint_anchor = None
             self._auto_assign()
             self._render_list_and_save()
             return

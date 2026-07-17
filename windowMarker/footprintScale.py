@@ -99,6 +99,44 @@ import ezdxf
 # Platzierung/Variante).
 LED_OFFSET_TOP_MM = 7.3
 
+
+def led_footprint_offset_mm(variant_leds: list, width_mm: float, height_mm: float,
+                            led_width_mm: float = 5.0) -> tuple:
+    """(dx, dy, mirror_width_mm): der Footprint haengt STARR an den LEDs
+    einer Platzierung (mittig, siehe get_footprint_points) -- NICHT an
+    irgendwelchen echten Fenstern, die diese Platzierung gerade zufaellig
+    beleuchtet (eine Platzierung kann bewusst neben ihrer Fenstermitte
+    sitzen). `dx`/`dy` (mm) sind der Versatz von der "Anker-LED" der
+    Vorlage `variant_leds` (der mit dem kleinsten x_mm/y_mm, ueblicherweise
+    die erste LED der Kette) zur linken oberen Ecke des width_mm x
+    height_mm grossen Footprints: HORIZONTAL mittig ueber ALLEN LEDs der
+    Vorlage (inkl. led_width_mm/2 Rand je Seite), VERTIKAL LED_OFFSET_TOP_MM
+    oberhalb der Anker-LED. `mirror_width_mm` ist die eigene horizontale
+    Spannweite der LED-Vorlage (max(x_mm)-min(x_mm), mindestens 1.0) -- die
+    Achse, um die bei GESPIEGELTEN Platzierungen zu spiegeln ist (Footprint
+    UND LEDs zusammen, als EIN starres Stueck).
+
+    DIES IST DIE EINE STELLE, an der diese Rechnung steht -- sowohl
+    windowMarker.dxfExport (tatsaechlicher Export) als auch
+    ledBatchEditor.led_batch_editor (Editor-Vorschau, siehe dortiges
+    _footprint_anchor) rufen sie auf, damit beide IMMER exakt dieselbe
+    Position liefern, unabhaengig davon, welche echten Fenster gerade
+    beruehrt werden. (0.0, 0.0, 1.0) ohne `variant_leds`."""
+    if not variant_leds:
+        return 0.0, 0.0, 1.0
+    xs = [l['x_mm'] for l in variant_leds]
+    ys = [l['y_mm'] for l in variant_leds]
+    anchor_x, anchor_y = min(xs), min(ys)
+    min_x = anchor_x - led_width_mm / 2
+    max_x = max(xs) + led_width_mm / 2
+    size_x = max_x - min_x
+    desired_left = min_x + (size_x - width_mm) / 2
+    desired_top = anchor_y - LED_OFFSET_TOP_MM
+    dx = desired_left - anchor_x
+    dy = desired_top - anchor_y
+    mirror_width_mm = (max(xs) - anchor_x) or 1.0
+    return dx, dy, mirror_width_mm
+
 # Bodenplatte (siehe get_bottom_plate_points): feste Hoehe (== SIDE_PLATE_WIDTH_MM,
 # 11mm), unabhaengig von height_mm (der Footprint-/LED-Flaechen-Hoehe). Traegt
 # 2 Zungen an der UNTERKANTE (Y=0, ragen nach UNTEN ueber den Rand hinaus --

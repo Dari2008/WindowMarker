@@ -6,16 +6,18 @@ get_part_counts()  DIE zentrale Funktion: zaehlt, wie viele physische
                    Platinen-Platzierungen es insgesamt gibt (eine platzierte
                    Variante = ein Teil, unabhaengig davon, wie viele LEDs
                    darauf aktiv sind), wie viele davon nahe der Bodenkante
-                   des Hauses liegen, und wie viele Bodenplatten/Footprints/
-                   Seitenteile/innere Seitenteile JE TATSAECHLICH
-                   VORKOMMENDER Footprint-Groesse gebraucht werden (siehe
+                   des Hauses liegen, und wie viele Bodenplatten/Seitenteile/
+                   innere Seitenteile JE TATSAECHLICH VORKOMMENDER
+                   Footprint-Groesse gebraucht werden (siehe
                    dxfExport.resolve_footprint_size/collect_footprint_sizes
                    -- es gibt keine benannten Footprint-"Typen" mehr, jede
                    Groesse bekommt einfach ihre eigene Zeile, benannt nach
                    ihren mm-Massen). Diese counts sind die Grundlage fuer die
-                   Stueckzahl im kombinierten Teile-Blatt (siehe
+                   Stueckzahl im kombinierten Teile-Blatt UND fuer die
+                   Dateinamen der einzeln exportierten Teile (siehe
                    footprintScale.nest_parts_sheet/led_batch_editor.
-                   App._export_project), damit CSV und Schnitt-Blatt NIEMALS
+                   App._export_project -- 'quantity_name.dxf'), damit CSV
+                   und tatsaechlich geschriebene Dateien NIEMALS
                    auseinanderlaufen. Gibt eine Liste von {'count',
                    'description', 'filename'}-Dicts zurueck.
 export_csv()       Schreibt eine Liste solcher Dicts als CSV-Datei (Spalten:
@@ -23,8 +25,10 @@ export_csv()       Schreibt eine Liste solcher Dicts als CSV-Datei (Spalten:
 
 Den projektweiten Export-Einstiegspunkt (alle Haeuser auf einmal, siehe
 images.json) gibt es NICHT mehr in diesem Modul -- er lebt als
-ledBatchEditor.App._export_project (kombiniert DXF + CSV + footprint-
-WxHmm.dxf-Dateien in EINEM Rutsch, siehe dort).
+ledBatchEditor.App._export_project (kombiniert DXF + CSV + Bodenplatten-/
+Seitenteil-Dateien in EINEM Rutsch, siehe dort). Der Footprint selbst wird
+NICHT mehr als eigene Datei geschrieben (nur als Skizze/Ausschnitt direkt
+in die Hauszeichnung eingefuegt).
 """
 
 import csv
@@ -47,11 +51,12 @@ BOTTOM_THRESHOLD_MM = 40.0
 # getrennte Stueckliste-Zeilen pro Groesse, aber derselbe Multiplikator.
 SIDE_PIECES_PER_PLACEMENT = 2
 INNER_SIDE_PIECES_PER_PLACEMENT = 2
-# Bodenplatte und Footprint: je EINE Stueck JE PLATZIERUNG (siehe
-# footprintScale.py -- eine Bodenplatte spannt genau eine Platzierungs-
-# Breite, ein Footprint genau eine Platzierungs-Groesse).
+# Bodenplatte: EIN Stueck JE PLATZIERUNG (siehe footprintScale.py -- eine
+# Bodenplatte spannt genau eine Platzierungs-Breite). Der Footprint selbst
+# wird NICHT als eigene Datei exportiert (nur als Skizze/Ausschnitt direkt
+# in die Hauszeichnung eingefuegt, siehe dxfExport._insert_footprints) --
+# daher KEINE eigene Stueckliste-Zeile/Datei dafuer.
 BOTTOM_PLATES_PER_PLACEMENT = 1
-FOOTPRINTS_PER_PLACEMENT = 1
 # Verbinder sind dagegen bei JEDER Groesse physisch IDENTISCH -- deshalb nur
 # EINE Zeile ueber alle Platzierungen hinweg, nicht nach Groesse aufgesplittet.
 CONNECTORS_PER_PLACEMENT = 1
@@ -108,22 +113,26 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
 
     Gruppiert nach physischer Platzierung (dxfExport.get_placed_leds()'s
     variantUuid = ledBatches[].id -- eine Platine, unabhaengig davon, wie
-    viele ihrer LEDs aktiv sind), nicht nach einzelner LED. Gibt eine Liste
-    von {'count', 'description', 'filename'}-Dicts zurueck, z.B.:
+    viele ihrer LEDs aktiv sind), nicht nach einzelner LED. 'filename'
+    traegt IMMER die Stueckzahl als Praefix (siehe led_batch_editor.
+    App._export_project, das die Dateien mit demselben Namen schreibt --
+    'quantity_name.dxf' statt nur 'name.dxf', damit auf einen Blick klar
+    ist, wie viele Kopien in der Datei gemeint sind). Der Footprint selbst
+    hat KEINE eigene Zeile/Datei (nur Skizze/Ausschnitt direkt in der
+    Hauszeichnung, siehe dxfExport._insert_footprints). Gibt eine Liste von
+    {'count', 'description', 'filename'}-Dicts zurueck, z.B.:
         [{'count': 5, 'description': '70mm', 'filename': 'haus.dxf'},
          {'count': 2, 'description': '70mm (nahe Bodenkante, <= 40mm)', 'filename': 'haus.dxf'},
-         {'count': 6, 'description': 'Bodenplatte (10mm)', 'filename': 'bottomplate-10mm.dxf'},
-         {'count': 4, 'description': 'Bodenplatte (75mm)', 'filename': 'bottomplate-75mm.dxf'},
-         {'count': 6, 'description': 'Footprint (10x100mm)', 'filename': 'footprint-10x100mm.dxf'},
-         {'count': 6, 'description': 'Seitenteile (10x100mm)', 'filename': 'footprint-10x100mm.dxf'},
-         {'count': 6, 'description': 'Innere Seitenteile (10x100mm)', 'filename': 'footprint-10x100mm.dxf'},
-         {'count': 4, 'description': 'Footprint (75x60mm)', 'filename': 'footprint-75x60mm.dxf'},
-         {'count': 4, 'description': 'Seitenteile (75x60mm)', 'filename': 'footprint-75x60mm.dxf'},
-         {'count': 4, 'description': 'Innere Seitenteile (75x60mm)', 'filename': 'footprint-75x60mm.dxf'},
+         {'count': 6, 'description': 'Bodenplatte (10mm)', 'filename': '6_bottomplate-10mm.dxf'},
+         {'count': 4, 'description': 'Bodenplatte (75mm)', 'filename': '4_bottomplate-75mm.dxf'},
+         {'count': 6, 'description': 'Seitenteile (100mm)', 'filename': '6_sideplate-outer-100mm.dxf'},
+         {'count': 6, 'description': 'Innere Seitenteile (100mm)', 'filename': '6_sideplate-inner-100mm.dxf'},
+         {'count': 4, 'description': 'Seitenteile (60mm)', 'filename': '4_sideplate-outer-60mm.dxf'},
+         {'count': 4, 'description': 'Innere Seitenteile (60mm)', 'filename': '4_sideplate-inner-60mm.dxf'},
          {'count': 5, 'description': 'Verbinder', 'filename': 'haus.dxf'},
-         {'count': 2, 'description': 'Gebaeudekontur mit Fensterscheiben', 'filename': 'haus_outline_with_panes.dxf'},
-         {'count': 2, 'description': 'Kontur horizontal', 'filename': 'haus_outline.dxf'},
-         {'count': 2, 'description': 'Kontur vertikal', 'filename': 'haus_outline.dxf'}]
+         {'count': 2, 'description': 'Gebaeudekontur mit Fensterscheiben', 'filename': '2_haus_outline_with_panes.dxf'},
+         {'count': 2, 'description': 'Kontur horizontal', 'filename': '4_haus_outline.dxf'},
+         {'count': 2, 'description': 'Kontur vertikal', 'filename': '4_haus_outline.dxf'}]
     """
     entries = dxfExport.get_placed_leds(house_data)
     if not entries:
@@ -164,28 +173,38 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
     for (width_mm, height_mm), count in size_counts.items():
         width_counts[width_mm] = width_counts.get(width_mm, 0) + count
     for width_mm, count in sorted(width_counts.items()):
+        bp_count = count * BOTTOM_PLATES_PER_PLACEMENT
         label = f'{width_mm:g}mm'
-        rows.append({'count': count * BOTTOM_PLATES_PER_PLACEMENT,
+        rows.append({'count': bp_count,
                     'description': f'Bodenplatte ({label})',
-                    'filename': f'bottomplate-{label}.dxf'})
+                    'filename': f'{bp_count}_bottomplate-{label}.dxf'})
 
-    for (width_mm, height_mm), count in sorted(size_counts.items()):
-        label = dxfExport.format_footprint_size(width_mm, height_mm)
-        fp_dxf = f'footprint-{label}.dxf'
-        rows.append({'count': count * FOOTPRINTS_PER_PLACEMENT,
-                    'description': f'Footprint ({label})', 'filename': fp_dxf})
-        rows.append({'count': count * SIDE_PIECES_PER_PLACEMENT,
-                    'description': f'Seitenteile ({label})', 'filename': fp_dxf})
-        rows.append({'count': count * INNER_SIDE_PIECES_PER_PLACEMENT,
-                    'description': f'Innere Seitenteile ({label})', 'filename': fp_dxf})
+    # Seitenteile haengen NUR von height_mm ab (siehe footprintScale.
+    # get_side_plate_points) -- aus demselben Grund wie bei der Bodenplatte
+    # HIER separat nach height_mm aufsummiert.
+    height_counts: dict = {}
+    for (width_mm, height_mm), count in size_counts.items():
+        height_counts[height_mm] = height_counts.get(height_mm, 0) + count
+    for height_mm, count in sorted(height_counts.items()):
+        h_label = f'{height_mm:g}mm'
+        outer_count = count * SIDE_PIECES_PER_PLACEMENT
+        inner_count = count * INNER_SIDE_PIECES_PER_PLACEMENT
+        rows.append({'count': outer_count,
+                    'description': f'Seitenteile ({h_label})',
+                    'filename': f'{outer_count}_sideplate-outer-{h_label}.dxf'})
+        rows.append({'count': inner_count,
+                    'description': f'Innere Seitenteile ({h_label})',
+                    'filename': f'{inner_count}_sideplate-inner-{h_label}.dxf'})
 
     rows.append({'count': len(by_placement) * CONNECTORS_PER_PLACEMENT,
                 'description': 'Verbinder', 'filename': led_dxf})
 
     if outline is not None:
-        outline_with_panes_dxf = f'{house_name}_outline_with_panes.dxf' if house_name else None
-        outline_only_dxf = f'{house_name}_outline.dxf' if house_name else None
-        rows.append({'count': OUTLINE_WITH_PANES_COUNT,
+        panes_count = OUTLINE_WITH_PANES_COUNT
+        outline_count = OUTLINE_HORIZONTAL_COUNT + OUTLINE_VERTICAL_COUNT
+        outline_with_panes_dxf = f'{panes_count}_{house_name}_outline_with_panes.dxf' if house_name else None
+        outline_only_dxf = f'{outline_count}_{house_name}_outline.dxf' if house_name else None
+        rows.append({'count': panes_count,
                     'description': 'Gebaeudekontur mit Fensterscheiben', 'filename': outline_with_panes_dxf})
         rows.append({'count': OUTLINE_HORIZONTAL_COUNT,
                     'description': 'Kontur horizontal', 'filename': outline_only_dxf})

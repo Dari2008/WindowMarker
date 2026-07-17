@@ -218,17 +218,23 @@ class DxfDrawing:
 def get_placed_leds(house_data: dict) -> list:
     """Alle platzierten, aktiven LEDs eines Hauses -- pro physischer LED
     (nicht pro Fenster: ein Fenster kann von mehreren LEDs versorgt werden)
-    ein Eintrag {'x','y','w','h','ledIndex','variantUuid','width_mm','height_mm'}
-    mit dem Rechteck des Fensters, das diese LED versorgt, ihrem Ketten-Index
-    (chainIndex), der ID der physischen Platinen-PLATZIERUNG
-    (ledBatches[].id), zu der sie gehoert -- platziert man eine Variante mit
-    3 LEDs, teilen sich alle 3 dieselbe variantUuid; eine andere Platzierung
-    (auch derselben Varianten-ART, z.B. wieder "70mm") bekommt eine ANDERE --
-    und der PRO PLATZIERUNG eintragbaren Footprint-Groesse
-    (ledBatches[].width_mm/height_mm, siehe ledBatchEditor.py's Footprint-
-    B×H-Feldern je Platzierungskarte); `None`, wenn diese Platzierung keine
-    eigene hat (dann gilt beim Export der Default der Variante, siehe
-    resolve_footprint_size).
+    ein Eintrag {'x','y','w','h','ledIndex','variantUuid','width_mm',
+    'height_mm','batch_x','batch_y','flipped'} mit dem Rechteck des
+    Fensters, das diese LED versorgt, ihrem Ketten-Index (chainIndex), der
+    ID der physischen Platinen-PLATZIERUNG (ledBatches[].id), zu der sie
+    gehoert -- platziert man eine Variante mit 3 LEDs, teilen sich alle 3
+    dieselbe variantUuid; eine andere Platzierung (auch derselben
+    Varianten-ART, z.B. wieder "70mm") bekommt eine ANDERE -- und der PRO
+    PLATZIERUNG eintragbaren Footprint-Groesse (ledBatches[].width_mm/
+    height_mm, siehe ledBatchEditor.py's Footprint-B×H-Feldern je
+    Platzierungskarte); `None`, wenn diese Platzierung keine eigene hat
+    (dann gilt beim Export der Default der Variante, siehe
+    resolve_footprint_size). 'batch_x'/'batch_y' (mm, wie 'x'/'y') und
+    'flipped' sind der ROHE Anker/Spiegel-Zustand der PLATZIERUNG selbst
+    (ledBatches[].x/y/flipped, NICHT das Fenster-Rechteck) -- fuer den
+    Footprint-Anker (siehe _footprint_anchor), der STARR an der Platzierung
+    haengt, nicht an den echten Fenstern (die koennen bewusst abweichen,
+    wenn eine Platzierung nicht exakt ueber ihrer Fenstermitte sitzt).
 
     Liest direkt aus house_data['ledBatches'][*]['leds'] (die eigentliche
     Quelle der Wahrheit), statt aus windows[].ledIndex zu lesen -- letzteres
@@ -236,15 +242,15 @@ def get_placed_leds(house_data: dict) -> list:
     _recompute_chain geschriebene LED, waehrend hier jede einzelne platzierte
     LED einen eigenen Eintrag bekommt.
 
-    Die Fensterrechtecke (windows[].{x,y,w,h}) liegen im JSON in BILD-PIXELN
-    vor, nicht in mm -- werden hier aber ueber house_data['dpi'] (dieselbe
-    Umrechnung wie ledBatchEditor.px_per_mm: dpi / 25.4) in ECHTE mm
-    umgerechnet, damit sie im DXF dieselbe Einheit wie die LED-Footprint-
-    Kontur (footprints/Led-Footprint.dxf, echte mm) haben. Ohne diese
-    Umrechnung wurden Fensterrechtecke mit ihrem rohen Pixelwert als "mm"
-    gezeichnet -- bei ueblichen Aufloesungen ein Vielfaches ihrer echten
-    Groesse, wodurch die (korrekt in mm bemessene) Footprint-Kontur daneben
-    winzig aussah."""
+    Die Fensterrechtecke (windows[].{x,y,w,h}) UND der Platzierungs-Anker
+    (ledBatches[].x/y) liegen im JSON in BILD-PIXELN vor, nicht in mm --
+    werden hier aber ueber house_data['dpi'] (dieselbe Umrechnung wie
+    ledBatchEditor.px_per_mm: dpi / 25.4) in ECHTE mm umgerechnet, damit sie
+    im DXF dieselbe Einheit wie die LED-Footprint-Kontur (footprints/
+    Led-Footprint.dxf, echte mm) haben. Ohne diese Umrechnung wurden
+    Fensterrechtecke mit ihrem rohen Pixelwert als "mm" gezeichnet -- bei
+    ueblichen Aufloesungen ein Vielfaches ihrer echten Groesse, wodurch die
+    (korrekt in mm bemessene) Footprint-Kontur daneben winzig aussah."""
     px_per_mm = (house_data.get('dpi') or DEFAULT_DPI) / 25.4
     windows = house_data.get('windows', [])
     placed = []
@@ -252,6 +258,9 @@ def get_placed_leds(house_data: dict) -> list:
         variant_uuid = batch.get('id')
         width_mm = batch.get('width_mm')
         height_mm = batch.get('height_mm')
+        batch_x = (batch.get('x') or 0) / px_per_mm
+        batch_y = (batch.get('y') or 0) / px_per_mm
+        flipped = bool(batch.get('flipped'))
         for led in batch.get('leds', []):
             if not led.get('enabled'):
                 continue
@@ -266,6 +275,9 @@ def get_placed_leds(house_data: dict) -> list:
                 'variantUuid': variant_uuid,
                 'width_mm': width_mm,
                 'height_mm': height_mm,
+                'batch_x': batch_x,
+                'batch_y': batch_y,
+                'flipped': flipped,
             })
     return placed
 
@@ -310,7 +322,8 @@ def _replace_layer_entities(dwg: 'DxfDrawing', layer: str) -> None:
 
 
 def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', windows: list,
-                             entries: list | None = None, variant_size: tuple | None = None) -> None:
+                             entries: list | None = None, variant_size: tuple | None = None,
+                             variant_leds: list | None = None) -> None:
     """Zeichnet den echten Gebaeude-Umriss (siehe Outline.polylines) MIT
     ALLEN Fensteroeffnungen aus `windows` (bereits in ECHTEN mm, siehe
     get_placed_leds()'s Umrechnung -- ALLE Fenster des Hauses, nicht nur die
@@ -326,25 +339,28 @@ def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', windows: lis
     for w in windows:
         dwg.add_rect(w['x'], w['y'], w['w'], w['h'], layer=OUTLINE_PANES_LAYER, color=6)
     if entries:
-        _insert_footprints(dwg, entries, variant_size, layer=OUTLINE_PANES_FOOTPRINT_LAYER)
+        _insert_footprints(dwg, entries, variant_size, layer=OUTLINE_PANES_FOOTPRINT_LAYER,
+                          variant_leds=variant_leds)
 
 
 def export_outline_with_panes_dxf(outline: 'Outline', windows: list, out_path,
                                   entries: list | None = None,
-                                  variant_size: tuple | None = None) -> Path:
+                                  variant_size: tuple | None = None,
+                                  variant_leds: list | None = None) -> Path:
     """Schreibt EINE NEUE DXF-Datei mit dem Gebaeude-Umriss + allen
     Fensteroeffnungen + (mit `entries`) den Footprint-Ausschnitten
     ("Gebaeudekontur mit Fensterscheiben"). Ueberschreibt `out_path`
     komplett -- fuer eine bereits exportierte Datei stattdessen zu
     AKTUALISIEREN (statt zu ueberschreiben), siehe edit_outline_with_panes_dxf()."""
     dwg = DxfDrawing()
-    _draw_outline_with_panes(dwg, outline, windows, entries, variant_size)
+    _draw_outline_with_panes(dwg, outline, windows, entries, variant_size, variant_leds)
     return dwg.save(out_path)
 
 
 def edit_outline_with_panes_dxf(outline: 'Outline', windows: list, path,
                                 entries: list | None = None,
-                                variant_size: tuple | None = None) -> Path:
+                                variant_size: tuple | None = None,
+                                variant_leds: list | None = None) -> Path:
     """Aktualisiert die Gebaeudekontur + Fensteroeffnungen + Footprint-
     Ausschnitte in einer BEREITS exportierten DXF-Datei bei `path` (per
     DxfDrawing.load() geoeffnet) -- ersetzt dazu nur die vorhandenen Entities
@@ -357,7 +373,7 @@ def edit_outline_with_panes_dxf(outline: 'Outline', windows: list, path,
     dwg = DxfDrawing.load(path) if path.is_file() else DxfDrawing()
     _replace_layer_entities(dwg, OUTLINE_PANES_LAYER)
     _replace_layer_entities(dwg, OUTLINE_PANES_FOOTPRINT_LAYER)
-    _draw_outline_with_panes(dwg, outline, windows, entries, variant_size)
+    _draw_outline_with_panes(dwg, outline, windows, entries, variant_size, variant_leds)
     return dwg.save(path)
 
 
@@ -446,40 +462,44 @@ def _footprint_scaled_points(width_mm: float, height_mm: float) -> list:
     return [[(pt[0], height_mm - pt[1]) for pt in e.get_points()] for e in msp.query('LWPOLYLINE')]
 
 
-def _footprint_anchor(leds: list, width_mm: float, height_mm: float) -> tuple:
-    """Translationsvektor (dx, dy), um die (siehe _footprint_scaled_points)
-    Footprint-Geometrie so zu verschieben, dass sie HORIZONTAL zentriert
-    ueber der tatsaechlichen Ausdehnung der von dieser Platzierung
-    versorgten FENSTER liegt.
+def _footprint_placement_transform(leds: list, width_mm: float, height_mm: float,
+                                   variant_leds: list | None = None):
+    """Gibt eine Funktion `transform(fx, fy) -> (x, y)` zurueck, die einen
+    LOKALEN Footprint-Punkt (siehe _footprint_scaled_points, fx in
+    [0, width_mm], fy in [0, height_mm]) in ABSOLUTE Haus-mm umrechnet.
 
-    `leds` sind get_placed_leds()-Eintraege -- jeder traegt das RECHTECK des
-    jeweils versorgten Fensters (`x, y, w, h`, siehe dort), NICHT eine
-    einzelne LED-Punktposition. Die Spanne muss deshalb von der LINKEN Kante
-    des am weitesten LINKS liegenden Fensters bis zur RECHTEN Kante des am
-    weitesten RECHTS liegenden Fensters reichen (`led['x'] + led['w']`,
-    NICHT nochmal `led['x']`!) -- eine fruehere Version nahm faelschlich
-    `max(led['x'])` (die LINKE Kante des rechten Fensters) als rechten Rand
-    und liess dessen gesamte Breite unter den Tisch fallen, wodurch die
-    Platine zu schmal berechnet und sichtbar falsch (zu weit links,
-    ueber die Fenster hinweg verschoben) platziert wurde.
+    Der Footprint haengt STARR an den LEDs DIESER Platzierung (mittig,
+    siehe footprintScale.led_footprint_offset_mm) -- NICHT an den echten
+    Fenstern, die sie gerade zufaellig beleuchtet (eine fruehere Version
+    zentrierte stattdessen ueber der tatsaechlichen Ausdehnung der
+    versorgten Fenster; dadurch landete der Footprint an einer anderen
+    Stelle als im Editor, sobald eine Platzierung bewusst nicht exakt ueber
+    ihrer Fenstermitte sass). `variant_leds` (die LED-Vorlage der Variante,
+    x_mm/y_mm) plus `leds[0]['batch_x']/['batch_y']/['flipped']` (der ROHE
+    Anker/Spiegel-Zustand der Platzierung selbst, siehe get_placed_leds)
+    ergeben GENAU dieselbe Position wie ledBatchEditor.led_batch_editor.
+    footprint_image_points -- beide rufen dieselbe Formel auf
+    (footprintScale.led_footprint_offset_mm), damit Editor-Vorschau und
+    tatsaechlicher Export niemals auseinanderlaufen.
 
-    VERTIKAL sitzen die LEDs footprintScale.LED_OFFSET_TOP_MM unterhalb der
-    Fenster-Oberkante (fester Wert, siehe footprintScale.py -- keine
-    Footprint-Konfiguration mehr).
-
-    Die skalierte Kontur (siehe _footprint_scaled_points/footprintScale) ist
-    bereits auf (0, 0) normiert -- fp_left/fp_top sind hier also IMMER 0,
-    anders als bei der frueheren, unskalierten Rohgeometrie (die ihren
-    eigenen Ursprung z.B. bei (-63.5, -10) haben konnte)."""
+    Bei gespiegelten Platzierungen (`flipped`) wird `fx` PRO PUNKT gespiegelt
+    (nicht nur ein fester Versatz addiert -- die Spiegelachse ist
+    `mirror_w` (die eigene Breite der LED-Vorlage), NICHT width_mm), exakt
+    wie ledBatchEditor._footprint_geometry_image das tut."""
     if not leds:
-        return 0.0, 0.0
-    min_x = min(led['x'] for led in leds)
-    max_x = max(led['x'] + led['w'] for led in leds)
-    min_y = min(led['y'] for led in leds)
-    size_x = max_x - min_x
-    desired_left = min_x + (size_x - width_mm) / 2
-    desired_top = min_y - footprintScale.LED_OFFSET_TOP_MM
-    return desired_left, desired_top
+        return lambda fx, fy: (fx, fy)
+    batch_x = leds[0].get('batch_x', 0.0)
+    batch_y = leds[0].get('batch_y', 0.0)
+    flipped = leds[0].get('flipped', False)
+    dx, dy, mirror_w = footprintScale.led_footprint_offset_mm(variant_leds or [], width_mm, height_mm)
+
+    def transform(fx, fy):
+        lx = dx + fx
+        if flipped and variant_leds:
+            lx = mirror_w - lx
+        return batch_x + lx, batch_y + dy + fy
+
+    return transform
 
 
 def format_footprint_size(width_mm: float, height_mm: float) -> str:
@@ -506,7 +526,8 @@ def collect_footprint_sizes(entries: list, variant_size: tuple | None = None) ->
 
 
 def _insert_footprints(dwg: 'DxfDrawing', entries: list,
-                       variant_size: tuple | None = None, layer: str | None = None) -> None:
+                       variant_size: tuple | None = None, layer: str | None = None,
+                       variant_leds: list | None = None) -> None:
     """Fuegt fuer JEDE Platzierung (gruppiert nach variantUuid) ihre
     Footprint-Kontur ein -- Groesse aufgeloest ueber resolve_footprint_size
     (Platzierungs-Override aus `leds[0]`, sonst der hier uebergebene
@@ -515,6 +536,12 @@ def _insert_footprints(dwg: 'DxfDrawing', entries: list,
     als auch von _draw_outline_with_panes() (Footprint-AUSSCHNITTE auf der
     Fensterscheiben-Kontur, `layer=OUTLINE_PANES_FOOTPRINT_LAYER`) verwendet,
     damit beide GENAU dieselben Footprint-Positionen zeichnen.
+
+    `variant_leds` (die LED-Vorlage der Variante, x_mm/y_mm -- siehe
+    _footprint_placement_transform) bestimmt den STARREN Anker relativ zu
+    den LEDs jeder Platzierung; ohne sie (z.B. alter Aufrufer, der sie noch
+    nicht mitgibt) faellt die Position auf (0, 0) relativ zur Platzierung
+    zurueck (kein Absturz, aber vermutlich nicht die gewuenschte Stelle).
 
     Zeichnet ganz normal ueber add_polyline() (reine (x, y)-Punktlisten,
     kein ezdxf.Importer/entity.transform() -- LWPOLYLINE-Entities tragen ein
@@ -531,14 +558,14 @@ def _insert_footprints(dwg: 'DxfDrawing', entries: list,
         polylines = _footprint_scaled_points(width_mm, height_mm)
         if not polylines:
             continue
-        dx, dy = _footprint_anchor(leds, width_mm, height_mm)
+        transform = _footprint_placement_transform(leds, width_mm, height_mm, variant_leds)
         for poly in polylines:
-            pts = [(x + dx, y + dy) for x, y in poly]
+            pts = [transform(fx, fy) for fx, fy in poly]
             dwg.add_polyline(pts, closed=True, layer=layer or '0', color=7)
 
 
 def export_dxf(entries: list, outline: Outline | None = None, out_path=None,
-               variant_size: tuple | None = None) -> Path:
+               variant_size: tuple | None = None, variant_leds: list | None = None) -> Path:
     """DIE EINE Funktion, die tatsaechlich die DXF-Datei schreibt.
 
     entries: platzierte LEDs EINES Hauses (siehe get_placed_leds()), je
@@ -549,6 +576,10 @@ def export_dxf(entries: list, outline: Outline | None = None, out_path=None,
     Variante (z.B. aus variant['footprint_width_mm']/['footprint_height_mm'])
     -- gilt fuer jede Platzierung ohne eigene width_mm/height_mm (siehe
     resolve_footprint_size).
+    variant_leds: die LED-Vorlage der Variante (x_mm/y_mm je LED, z.B.
+    variant['leds']) -- bestimmt den STARREN Footprint-Anker relativ zu den
+    LEDs (siehe _footprint_placement_transform/
+    footprintScale.led_footprint_offset_mm).
 
     Sortiert `entries` zuerst nach Variant-UUID, damit Rechtecke/Labels
     derselben physisch platzierten Platine im DXF hintereinander stehen
@@ -594,6 +625,6 @@ def export_dxf(entries: list, outline: Outline | None = None, out_path=None,
     # height_mm, siehe get_placed_leds()) -- fehlt sie fuer eine Platzierung,
     # gilt der hier uebergebene `variant_size` (Default der Variante) als
     # Fallback (siehe resolve_footprint_size).
-    _insert_footprints(dwg, entries, variant_size)
+    _insert_footprints(dwg, entries, variant_size, variant_leds=variant_leds)
 
     return dwg.save(out_path)
