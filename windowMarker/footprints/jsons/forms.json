@@ -1,0 +1,488 @@
+{
+  "forms": {
+    "footprint": {
+      "outline_is_cut": true,
+      "variables": [
+        [
+          "width_mm",
+          "75"
+        ],
+        [
+          "height_mm",
+          "40"
+        ],
+        [
+          "tongue_width",
+          "5.10"
+        ],
+        [
+          "tongue_depth",
+          "3.0"
+        ],
+        [
+          "undersize",
+          "0.1"
+        ],
+        [
+          "hole_w",
+          "tongue_width - undersize"
+        ],
+        [
+          "hole_d",
+          "tongue_depth - undersize"
+        ],
+        [
+          "gap",
+          "(width_mm - tongue_width*2) / 2"
+        ],
+        [
+          "h0x",
+          "gap/2 + (tongue_width-hole_w)/2"
+        ],
+        [
+          "h1x",
+          "gap/2 + tongue_width + gap + (tongue_width-hole_w)/2"
+        ],
+        [
+          "slot_y",
+          "3+height_mm/2-tongue_width/2"
+        ]
+      ],
+      "points": [
+        [
+          "0",
+          "0"
+        ],
+        [
+          "width_mm",
+          "0"
+        ],
+        [
+          "width_mm",
+          "height_mm"
+        ],
+        [
+          "0",
+          "height_mm"
+        ]
+      ],
+      "holes": [
+        [
+          "h_slot_left",
+          "h0x",
+          "0",
+          "hole_w",
+          "hole_d"
+        ],
+        [
+          "h_slot_right",
+          "h1x",
+          "0",
+          "hole_w",
+          "hole_d"
+        ],
+        [
+          "v_slot_left",
+          "0",
+          "slot_y",
+          "hole_d",
+          "hole_w"
+        ],
+        [
+          "v_slot_right",
+          "width_mm - hole_d",
+          "slot_y",
+          "hole_d",
+          "hole_w"
+        ],
+        [
+          "hole_5",
+          "width_mm/3-tongue_width/2",
+          "slot_y",
+          "hole_d",
+          "hole_w"
+        ],
+        [
+          "hole_6",
+          "width_mm/3*2-tongue_width/2",
+          "slot_y",
+          "hole_d",
+          "hole_w"
+        ]
+      ]
+    },
+    "bottom_plate": {
+      "outline_is_cut": true,
+      "variables": [
+        [
+          "width_mm",
+          "75"
+        ],
+        [
+          "thickness_mm",
+          "11"
+        ],
+        [
+          "tongue_width",
+          "5.10"
+        ],
+        [
+          "tongue_depth",
+          "3.0"
+        ],
+        [
+          "undersize",
+          "0.1"
+        ],
+        [
+          "gap",
+          "(width_mm - tongue_width*2) / 2"
+        ],
+        [
+          "t0x",
+          "gap/2"
+        ],
+        [
+          "t1x",
+          "gap/2 + tongue_width + gap"
+        ],
+        [
+          "hole_w",
+          "tongue_depth - undersize"
+        ],
+        [
+          "hole_h",
+          "tongue_width - undersize"
+        ],
+        [
+          "hole_y",
+          "(thickness_mm - hole_h)/2"
+        ],
+        [
+          "gap2",
+          "(width_mm - tongue_depth*2) / 2"
+        ],
+        [
+          "h0x",
+          "gap2/2 + (tongue_depth-hole_w)/2"
+        ],
+        [
+          "h1x",
+          "gap2/2 + tongue_depth + gap2 + (tongue_depth-hole_w)/2"
+        ],
+        [
+          "spacing",
+          "(width_mm-tongue_width*4)/3"
+        ]
+      ],
+      "points": [
+        [
+          "0",
+          "0"
+        ],
+        [
+          "t0x",
+          "0"
+        ],
+        [
+          "t0x",
+          "-tongue_depth"
+        ],
+        [
+          "t0x + tongue_width",
+          "-tongue_depth"
+        ],
+        [
+          "t0x + tongue_width",
+          "0"
+        ],
+        [
+          "t1x",
+          "0"
+        ],
+        [
+          "t1x",
+          "-tongue_depth"
+        ],
+        [
+          "t1x + tongue_width",
+          "-tongue_depth"
+        ],
+        [
+          "t1x + tongue_width",
+          "0"
+        ],
+        [
+          "width_mm",
+          "0"
+        ],
+        [
+          "width_mm",
+          "thickness_mm"
+        ],
+        [
+          "0",
+          "thickness_mm"
+        ]
+      ],
+      "holes": [
+        [
+          "side_hole_left",
+          "1*(spacing+tongue_width)",
+          "hole_y",
+          "hole_w",
+          "hole_h"
+        ],
+        [
+          "side_hole_right",
+          "2*(spacing+tongue_width)",
+          "hole_y",
+          "hole_w",
+          "hole_h"
+        ],
+        [
+          "side_left",
+          "0",
+          "hole_y",
+          "hole_w",
+          "hole_h"
+        ],
+        [
+          "side_right",
+          "width_mm-hole_w",
+          "hole_y",
+          "hole_w",
+          "hole_h"
+        ]
+      ]
+    },
+    "side_plate_outer": {
+      "outline_is_cut": true,
+      "variables": [
+        [
+          "depth",
+          "11"
+        ],
+        [
+          "height_mm",
+          "40"
+        ],
+        [
+          "tongue_width",
+          "5.10"
+        ],
+        [
+          "tongue_depth",
+          "3.0"
+        ],
+        [
+          "tongue_margin",
+          "(depth - tongue_width) / 2"
+        ],
+        [
+          "bx0",
+          "tongue_depth+(height_mm-tongue_depth-tongue_width)/2-tongue_width/2"
+        ],
+        [
+          "bx1",
+          "tongue_depth+(height_mm-tongue_depth-tongue_width)/2+tongue_width/2"
+        ],
+        [
+          "outer_slot_width",
+          "5.0"
+        ],
+        [
+          "outer_slot_height",
+          "7.0"
+        ],
+        [
+          "slot_left",
+          "height_mm - outer_slot_width"
+        ]
+      ],
+      "points": [
+        [
+          "0",
+          "tongue_margin"
+        ],
+        [
+          "0",
+          "tongue_margin + tongue_width"
+        ],
+        [
+          "tongue_depth",
+          "tongue_margin + tongue_width"
+        ],
+        [
+          "tongue_depth",
+          "depth"
+        ],
+        [
+          "height_mm",
+          "depth"
+        ],
+        [
+          "height_mm",
+          "outer_slot_height"
+        ],
+        [
+          "slot_left",
+          "outer_slot_height"
+        ],
+        [
+          "slot_left",
+          "0"
+        ],
+        [
+          "bx1",
+          "0"
+        ],
+        [
+          "bx1",
+          "-tongue_depth"
+        ],
+        [
+          "bx0",
+          "-tongue_depth"
+        ],
+        [
+          "bx0",
+          "0"
+        ],
+        [
+          "tongue_depth",
+          "0"
+        ],
+        [
+          "tongue_depth",
+          "tongue_margin"
+        ]
+      ],
+      "holes": []
+    },
+    "side_plate_inner": {
+      "outline_is_cut": true,
+      "variables": [
+        [
+          "height_mm",
+          "40"
+        ],
+        [
+          "depth",
+          "11"
+        ],
+        [
+          "tongue_width",
+          "5.10"
+        ],
+        [
+          "tongue_depth",
+          "3.0"
+        ],
+        [
+          "tongue_margin",
+          "(depth - tongue_width) / 2"
+        ],
+        [
+          "bx0",
+          "tongue_depth+(height_mm-tongue_depth)/2-tongue_width/2"
+        ],
+        [
+          "bx1",
+          "tongue_depth+(height_mm-tongue_depth)/2+tongue_width/2"
+        ],
+        [
+          "inner_slot_width",
+          "1.6"
+        ],
+        [
+          "slot_end_margin",
+          "5.7"
+        ],
+        [
+          "slot_overlap",
+          "-0.5"
+        ],
+        [
+          "slot_right",
+          "height_mm - slot_end_margin"
+        ],
+        [
+          "slot_left",
+          "slot_right - inner_slot_width"
+        ],
+        [
+          "slot_top",
+          "depth/2 + slot_overlap"
+        ]
+      ],
+      "points": [
+        [
+          "0",
+          "tongue_margin"
+        ],
+        [
+          "0",
+          "tongue_margin + tongue_width"
+        ],
+        [
+          "tongue_depth",
+          "tongue_margin + tongue_width"
+        ],
+        [
+          "tongue_depth",
+          "depth"
+        ],
+        [
+          "slot_left",
+          "depth"
+        ],
+        [
+          "slot_left",
+          "slot_top"
+        ],
+        [
+          "slot_right",
+          "slot_top"
+        ],
+        [
+          "slot_right",
+          "depth"
+        ],
+        [
+          "height_mm",
+          "depth"
+        ],
+        [
+          "height_mm",
+          "0"
+        ],
+        [
+          "bx1",
+          "0"
+        ],
+        [
+          "bx1",
+          "-tongue_depth"
+        ],
+        [
+          "bx0",
+          "-tongue_depth"
+        ],
+        [
+          "bx0",
+          "0"
+        ],
+        [
+          "tongue_depth",
+          "0"
+        ],
+        [
+          "tongue_depth",
+          "tongue_margin"
+        ]
+      ],
+      "holes": []
+    }
+  }
+}

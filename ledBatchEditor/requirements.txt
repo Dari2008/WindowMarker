@@ -1,0 +1,6 @@
+Pillow>=10.0
+pymupdf>=1.24      # optional: PDF-Haeuser laden (windowMarker/pdfHouse.py) -- ohne
+                   # dieses Paket bleibt der alte JPG/PNG-Workflow trotzdem nutzbar
+ezdxf>=1.3         # optional: Footprint-Kontur (footprints/Led-Footprint.dxf) im
+                   # Varianten-Designer/bei Platzierungen anzeigen -- ohne dieses
+                   # Paket wird einfach keine Footprint-Kontur gezeichnet

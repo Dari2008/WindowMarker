@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-slate-900 text-slate-100">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Modul-Stellwerk</title>
+  </head>
+  <body class="h-full p-6 select-none font-sans flex flex-col justify-between">
+    <!-- Header -->
+    <header class="border-b border-slate-700 pb-3 mb-4 flex justify-between items-center">
+      <div>
+        <h1 class="text-xl font-bold tracking-wider text-slate-200 flex items-center gap-2">
+          <span class="inline-block w-2.5 h-2.5 rounded-full bg-slate-400"></span>
+          Modul-Stellwerk
+        </h1>
+        <p class="text-xs text-slate-400">Beleuchtungssteuerung für segmentierte Modulkulissen</p>
+      </div>
+      <div id="clock" class="text-right font-mono text-lg font-semibold text-slate-400">
+        Modell-Zeit: --:--:--
+      </div>
+    </header>
+
+    <!-- Main Control Console -->
+    <main class="grid grid-cols-1 md:grid-cols-2 gap-6 flex-grow">
+      <!-- Left: Quick Actions -->
+      <section class="bg-slate-800 p-5 rounded-xl border border-slate-700 flex flex-col justify-between shadow-lg">
+        <div>
+          <h2 class="text-sm font-semibold uppercase text-slate-400 tracking-wider mb-4 border-b border-slate-700 pb-1">
+            Schnellsteuerung
+          </h2>
+          <div class="grid grid-cols-2 gap-3 mb-4">
+            <button id="btn-all-on" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 active:scale-95 transition rounded-lg font-semibold flex flex-col items-center justify-center gap-1 shadow border border-slate-600 text-slate-200">
+              <span class="text-slate-300">◎</span>
+              <span class="text-sm">Alles AN</span>
+            </button>
+            <button id="btn-all-off" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 active:scale-95 transition rounded-lg font-semibold flex flex-col items-center justify-center gap-1 shadow border border-slate-600 text-slate-200">
+              <span class="text-slate-300">○</span>
+              <span class="text-sm">Alles AUS</span>
+            </button>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <button id="btn-random" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 active:scale-95 transition rounded-lg font-semibold flex flex-col items-center justify-center gap-1 shadow border border-slate-600 text-slate-200">
+              <span class="text-slate-300">⁂</span>
+              <span class="text-sm">Zufalls-Mix</span>
+            </button>
+            <button id="btn-demo" class="px-4 py-3 bg-slate-700 hover:bg-slate-600 active:scale-95 transition rounded-lg font-semibold flex flex-col items-center justify-center gap-1 shadow border border-slate-600 text-slate-200">
+              <span class="text-slate-300">▷</span>
+              <span class="text-sm">Demo-Modus</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Simulation Clock Settings -->
+        <div class="mt-4 pt-4 border-t border-slate-700 space-y-4">
+          <h3 class="text-xs font-semibold uppercase text-slate-400 tracking-wider">Simulations-Einstellung</h3>
+          <div class="flex items-center justify-between">
+            <span class="text-xs text-slate-400">Tag-Nacht-Zyklus aktiv:</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+              <input type="checkbox" id="cycle-active" class="sr-only peer" checked>
+              <div class="w-9 h-5 bg-slate-700 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+            </label>
+          </div>
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-[11px] text-slate-400 font-medium">
+              <span>Geschwindigkeit:</span>
+              <span id="cycle-speed-label" class="font-mono text-slate-300 font-bold">1 Sek = 5 Min</span>
+            </div>
+            <input type="range" id="cycle-speed" min="1" max="60" value="5" class="w-full h-1.5 bg-slate-900 rounded-lg appearance-none cursor-pointer accent-indigo-500">
+          </div>
+        </div>
+
+        <div class="mt-4 pt-4 border-t border-slate-700">
+          <button id="btn-emergency" class="w-full py-3 bg-slate-800 hover:bg-red-950 transition-colors duration-150 text-slate-400 hover:text-red-200 font-bold text-center text-sm rounded-lg border border-slate-700 hover:border-red-900 flex items-center justify-center gap-2">
+            NOT-AUS
+          </button>
+        </div>
+      </section>
+
+      <!-- Right: System Information -->
+      <section class="bg-slate-800 p-5 rounded-xl border border-slate-700 flex flex-col justify-between shadow-lg">
+        <div>
+          <h2 class="text-sm font-semibold uppercase text-slate-400 tracking-wider mb-4 border-b border-slate-700 pb-1">
+            System-Status
+          </h2>
+          <div class="space-y-3">
+            <div class="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
+              <span class="text-slate-400">Verbindung:</span>
+              <span class="text-slate-300 font-semibold flex items-center gap-1">
+                <span class="w-2 h-2 rounded-full bg-slate-400 inline-block"></span> Aktiv
+              </span>
+            </div>
+            <div class="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
+              <span class="text-slate-400">Segmente:</span>
+              <span id="stat-segment-count" class="font-mono text-slate-300 font-bold">0</span>
+            </div>
+            <div class="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
+              <span class="text-slate-400">Fenster gesamt:</span>
+              <span id="stat-window-count" class="font-mono text-slate-300 font-bold">0</span>
+            </div>
+            <div class="flex justify-between items-center text-sm border-b border-slate-700/50 pb-2">
+              <span class="text-slate-400">Aktive Lichtquellen:</span>
+              <span id="stat-active-count" class="font-mono text-slate-300 font-bold">0</span>
+            </div>
+            <div class="flex justify-between items-center text-sm">
+              <span class="text-slate-400">Lichtmodus:</span>
+              <span id="stat-light-mode" class="text-slate-300 font-semibold">Standard</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Event log -->
+        <div class="mt-4">
+          <h3 class="text-xs font-semibold uppercase text-slate-500 tracking-wider mb-2">Ereignis-Protokoll</h3>
+          <div id="console-logs" class="bg-slate-950 rounded-lg p-2 font-mono text-[10px] text-slate-400 h-28 overflow-y-auto border border-slate-800 space-y-0.5">
+            <div>[--:--:--] Stellwerk initialisiert.</div>
+            <div>[--:--:--] Verbindung hergestellt.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="mt-4 pt-3 border-t border-slate-800 text-[11px] text-slate-500 flex justify-between items-center">
+      <span>FS-Modellbahn — Beleuchtete Modul-Kulissen</span>
+      <span>Bereit</span>
+    </footer>
+
+    <script type="module" src="./control.ts"></script>
+  </body>
+</html>

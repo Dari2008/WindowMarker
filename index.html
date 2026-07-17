@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="de" class="h-full bg-slate-950 text-slate-100">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Beleuchtete Modulkulissen - FS-Modellbahn</title>
+  </head>
+  <body class="h-full font-sans flex flex-col overflow-hidden">
+    <!-- Main Header & Navigation -->
+    <header class="relative bg-slate-900 border-b border-slate-800 px-6 py-4 flex items-center justify-between z-10 shadow-md">
+      <!-- Logo / Title -->
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">🚂</span>
+        <div>
+          <h1 class="text-lg font-bold tracking-tight text-white">FS-Modellbahn</h1>
+          <p class="text-xs text-slate-400">Beleuchtete Modulkulissen</p>
+        </div>
+      </div>
+
+      <!-- Centered Navigation Tabs -->
+      <nav class="absolute left-1/2 -translate-x-1/2 flex bg-slate-950 p-1 rounded-full border border-slate-800 shadow-inner">
+        <button
+          id="tab-control"
+          class="px-6 py-2 rounded-full font-medium text-sm transition-all duration-200 bg-slate-800 text-white shadow-sm"
+        >
+          Steuerung
+        </button>
+        <button
+          id="tab-build"
+          class="px-6 py-2 rounded-full font-medium text-sm transition-all duration-200 text-slate-400 hover:text-slate-200"
+        >
+          Aufbau
+        </button>
+      </nav>
+
+      <!-- Spacer for layout balance -->
+      <div class="w-12 h-12"></div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-grow relative overflow-hidden bg-slate-950 flex flex-col">
+      <!-- 1. Control Panel Tab Content (Iframe) -->
+      <section id="panel-control" class="w-full h-full">
+        <iframe
+          id="control-iframe"
+          src="/control/index.html"
+          class="w-full h-full border-none"
+          title="Stellwerk Konsole"
+        ></iframe>
+      </section>
+
+      <!-- 2. Build Tab Content -->
+      <section id="panel-build" class="w-full h-full hidden flex flex-row overflow-hidden bg-slate-950">
+        <!-- LEFT SIDEBAR: Fenster-Einstellungen (Window Settings) -->
+        <aside id="sidebar-window-settings" class="w-[340px] border-r border-slate-800 bg-slate-900/40 p-4 flex flex-col justify-between overflow-y-auto flex-shrink-0">
+          <div class="space-y-4">
+            <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+              <h3 class="font-bold text-sm text-slate-200 flex items-center gap-2">
+                <span class="text-slate-400">⚙</span> Fenster-Einstellungen
+              </h3>
+              <span id="selected-window-badge" class="px-2 py-0.5 rounded bg-slate-800 text-[9px] text-slate-400 font-bold uppercase tracking-wider">Auswahl</span>
+            </div>
+
+            <!-- Empty State for Sidebar (When no window is active) -->
+            <div id="sidebar-empty-state" class="py-12 text-center text-slate-500 space-y-3">
+              <span class="text-3xl block">🪟</span>
+              <p class="text-xs leading-relaxed max-w-[240px] mx-auto">Klicken Sie auf ein Fenster der Kulisse, um dessen individuelle Einstellungen anzupassen.</p>
+            </div>
+
+            <!-- Active Settings (Shown only when a window is selected) -->
+            <div id="sidebar-active-settings" class="space-y-4 hidden">
+              <!-- Info Block -->
+              <div class="p-3 bg-slate-800/40 border border-slate-800 rounded-xl">
+                <span id="active-settings-house-name" class="text-[9px] uppercase font-bold text-slate-400 tracking-wider block">Haus</span>
+                <span id="active-settings-window-name" class="text-xs font-bold text-slate-200 block mt-0.5">Fenster ID</span>
+              </div>
+
+              <!-- Quick ON/OFF State -->
+              <div class="space-y-1.5">
+                <div class="flex items-center justify-between p-3 bg-slate-800/20 border border-slate-800/60 rounded-xl">
+                  <span class="text-xs font-semibold text-slate-300">Licht einschalten:</span>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="window-state-toggle" class="sr-only peer">
+                    <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+                <div class="flex items-center justify-between p-3 bg-slate-800/20 border border-slate-800/60 rounded-xl">
+                  <div>
+                    <span class="text-xs font-semibold text-slate-300">Folgt Tag-Nacht-Zyklus:</span>
+                    <span class="text-[10px] text-slate-500 block leading-tight mt-0.5">Fenster schaltet mit der Tageszeit.</span>
+                  </div>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="window-follow-cycle" class="sr-only peer" checked>
+                    <div class="w-9 h-5 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+              </div>
+
+              <!-- Settings Sub-Tabs -->
+              <div class="flex bg-slate-900 border border-slate-800 p-0.5 rounded-lg text-xs font-medium">
+                <button id="set-tab-cycle" class="flex-1 py-1.5 rounded-md bg-slate-800 text-slate-200 transition">Tag-Nacht</button>
+                <button id="set-tab-color" class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-slate-200 transition">Farbe</button>
+                <button id="set-tab-nodes" class="flex-1 py-1.5 rounded-md text-slate-400 hover:text-slate-200 transition">Ablauf</button>
+              </div>
+
+              <!-- SUB-PANEL 1: Day-Night Cycle Effects -->
+              <div id="set-panel-cycle" class="space-y-3">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Nacht- & Tageffekte</span>
+                <div class="space-y-2">
+                  <label class="flex items-start gap-2.5 p-2.5 bg-slate-800/20 border border-slate-800/60 rounded-xl hover:bg-slate-800/35 cursor-pointer select-none">
+                    <input type="checkbox" id="effect-party" class="mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-600 bg-slate-950">
+                    <div>
+                      <span class="text-xs font-bold text-slate-200 block">Party in der Nacht</span>
+                      <span class="text-[10px] text-slate-400 block leading-tight mt-0.5">Schnelle Farbwechsel nach Sonnenuntergang.</span>
+                    </div>
+                  </label>
+                  <label class="flex items-start gap-2.5 p-2.5 bg-slate-800/20 border border-slate-800/60 rounded-xl hover:bg-slate-800/35 cursor-pointer select-none">
+                    <input type="checkbox" id="effect-tv" class="mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-600 bg-slate-950">
+                    <div>
+                      <span class="text-xs font-bold text-slate-200 block">Fernseher-Flackern</span>
+                      <span class="text-[10px] text-slate-400 block leading-tight mt-0.5">Bläuliches, unregelmäßiges Flackern nachts.</span>
+                    </div>
+                  </label>
+                  <label class="flex items-start gap-2.5 p-2.5 bg-slate-800/20 border border-slate-800/60 rounded-xl hover:bg-slate-800/35 cursor-pointer select-none">
+                    <input type="checkbox" id="effect-fire" class="mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-600 bg-slate-950">
+                    <div>
+                      <span class="text-xs font-bold text-slate-200 block">Kaminfeuer</span>
+                      <span class="text-[10px] text-slate-400 block leading-tight mt-0.5">Gemütliches orange-rotes Pulsieren.</span>
+                    </div>
+                  </label>
+                  <label class="flex items-start gap-2.5 p-2.5 bg-slate-800/20 border border-slate-800/60 rounded-xl hover:bg-slate-800/35 cursor-pointer select-none">
+                    <input type="checkbox" id="effect-office" class="mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-600 bg-slate-950">
+                    <div>
+                      <span class="text-xs font-bold text-slate-200 block">Büro-Dauerlicht</span>
+                      <span class="text-[10px] text-slate-400 block leading-tight mt-0.5">Kaltweißes Dauerlicht am Tag (9–17 Uhr).</span>
+                    </div>
+                  </label>
+                  <label class="flex items-start gap-2.5 p-2.5 bg-slate-800/20 border border-slate-800/60 rounded-xl hover:bg-slate-800/35 cursor-pointer select-none">
+                    <input type="checkbox" id="effect-welding" class="mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-600 bg-slate-950">
+                    <div>
+                      <span class="text-xs font-bold text-slate-200 block">Schweißlicht</span>
+                      <span class="text-[10px] text-slate-400 block leading-tight mt-0.5">Intensive blaue Schweißlicht-Blitze.</span>
+                    </div>
+                  </label>
+                  <label class="flex items-start gap-2.5 p-2.5 bg-slate-800/20 border border-slate-800/60 rounded-xl hover:bg-slate-800/35 cursor-pointer select-none">
+                    <input type="checkbox" id="effect-neon" class="mt-0.5 rounded border-slate-700 text-indigo-600 focus:ring-indigo-600 bg-slate-950">
+                    <div>
+                      <span class="text-xs font-bold text-slate-200 block">Neonröhre</span>
+                      <span class="text-[10px] text-slate-400 block leading-tight mt-0.5">Flackerndes Kaltweißlicht beim Einschalten, dann stabil.</span>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <!-- SUB-PANEL 2: Custom Color -->
+              <div id="set-panel-color" class="space-y-4 hidden">
+                <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Eigene Lichtfarbe</span>
+                <div class="bg-slate-800/20 border border-slate-800 p-4 rounded-xl flex flex-col items-center justify-center space-y-3">
+                  <div class="relative w-16 h-16 rounded-full overflow-hidden border border-slate-700 hover:border-indigo-500 transition shadow-md cursor-pointer">
+                    <input type="color" id="custom-color-picker" value="#f59e0b" class="absolute inset-0 w-full h-full scale-[1.5] cursor-pointer bg-transparent border-none">
+                  </div>
+                  <span id="custom-color-hex" class="font-mono text-xs font-bold text-slate-300">#F59E0B</span>
+                </div>
+                <!-- Presets -->
+                <div class="space-y-1.5">
+                  <span class="text-[10px] text-slate-400 uppercase tracking-wider font-semibold block">Voreinstellungen</span>
+                  <div class="grid grid-cols-3 gap-1.5">
+                    <button class="btn-color-preset h-8 rounded-md bg-[#f59e0b] border border-white/10 transition hover:scale-105 active:scale-95" data-color="#f59e0b" title="Amber"></button>
+                    <button class="btn-color-preset h-8 rounded-md bg-[#fef08a] border border-white/10 transition hover:scale-105 active:scale-95" data-color="#fef08a" title="Softgelb"></button>
+                    <button class="btn-color-preset h-8 rounded-md bg-[#fffbeb] border border-white/10 transition hover:scale-105 active:scale-95" data-color="#fffbeb" title="Warmweiß"></button>
+                    <button class="btn-color-preset h-8 rounded-md bg-[#f0f9ff] border border-white/10 transition hover:scale-105 active:scale-95" data-color="#f0f9ff" title="Kaltweiß"></button>
+                    <button class="btn-color-preset h-8 rounded-md bg-[#d8b4fe] border border-white/10 transition hover:scale-105 active:scale-95" data-color="#d8b4fe" title="Violett"></button>
+                    <button class="btn-color-preset h-8 rounded-md bg-[#fca5a5] border border-white/10 transition hover:scale-105 active:scale-95" data-color="#fca5a5" title="Rot"></button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- SUB-PANEL 3: Node Sequence -->
+              <div id="set-panel-nodes" class="space-y-3 hidden">
+                <!-- Player controls -->
+                <div class="flex items-center gap-1 bg-slate-900 border border-slate-800 p-1 rounded-lg">
+                  <button id="btn-node-play" class="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 transition" title="Abspielen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM9.555 7.168A1 1 0 008 8v4a1 1 0 001.555.832l3-2a1 1 0 000-1.664l-3-2z" clip-rule="evenodd" /></svg>
+                  </button>
+                  <button id="btn-node-pause" class="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-slate-200 hidden transition" title="Pausieren">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM7 8a1 1 0 012 0v4a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v4a1 1 0 102 0V8a1 1 0 00-1-1z" clip-rule="evenodd" /></svg>
+                  </button>
+                  <span id="node-player-status" class="flex-grow text-[10px] text-slate-500 pl-0.5">Gestoppt</span>
+                  <button id="btn-node-clear" class="p-1.5 hover:bg-slate-800 hover:text-slate-200 rounded text-slate-500 transition" title="Ablauf entfernen">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+                  </button>
+                </div>
+                <!-- Sequence selector -->
+                <div class="space-y-1.5">
+                  <span class="text-[10px] font-bold uppercase tracking-wider text-slate-400">Ablauf</span>
+                  <div class="flex items-center gap-1.5">
+                    <select id="sequence-select" class="flex-grow bg-slate-900 border border-slate-700 text-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-indigo-500 truncate">
+                      <option value="">(Kein Ablauf)</option>
+                    </select>
+                    <button id="btn-edit-sequence" class="w-7 h-7 flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded border border-slate-700 transition text-xs" title="Ablauf bearbeiten">✏</button>
+                    <button id="btn-new-sequence" class="w-7 h-7 flex items-center justify-center bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded border border-slate-700 transition font-bold" title="Neuen Ablauf erstellen">+</button>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </aside>
+
+        <!-- RIGHT AREA: Pan/Zoom Scenery Canvas -->
+        <div class="flex-grow flex flex-col overflow-hidden bg-slate-950">
+          <!-- Fixed Header Controls -->
+          <div class="flex items-center justify-between gap-3 px-5 py-3 border-b border-slate-800 flex-shrink-0">
+            <div>
+              <h2 class="text-sm font-bold text-white">Modul-Kulisse</h2>
+              <p class="text-[11px] text-slate-500">Mausrad = Zoomen &nbsp;·&nbsp; Ziehen = Verschieben</p>
+            </div>
+            <div class="flex items-center gap-2">
+              <!-- Zoom controls -->
+              <div class="flex items-center gap-0.5 bg-slate-800 border border-slate-700 rounded-lg px-1 py-0.5">
+                <button id="btn-zoom-out" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-200 transition rounded text-lg leading-none" title="Verkleinern">−</button>
+                <span id="zoom-label" class="font-mono text-[11px] text-slate-300 w-12 text-center select-none">100%</span>
+                <button id="btn-zoom-in"  class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-200 transition rounded text-lg leading-none" title="Vergrößern">+</button>
+                <div class="w-px h-4 bg-slate-700 mx-0.5"></div>
+                <button id="btn-zoom-fit" class="w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-200 transition rounded text-xs font-bold" title="Einpassen">⊡</button>
+              </div>
+              <button id="btn-add-house-header" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg font-medium text-sm flex items-center gap-1.5 border border-slate-700 transition active:scale-95">
+                + Segment
+              </button>
+              <button id="btn-clear-scenery" class="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 rounded-lg text-sm border border-slate-700 transition active:scale-95" title="Zurücksetzen">✕</button>
+            </div>
+          </div>
+
+          <!-- Zoomable / Pannable Viewport -->
+          <div id="build-viewport" class="flex-grow relative overflow-hidden bg-slate-950">
+            <!-- Empty State (centered) -->
+            <div id="build-empty-state" class="absolute inset-0 flex items-center justify-center z-10">
+              <button
+                id="btn-add-house-center"
+                class="group relative w-28 h-28 rounded-full border-4 border-dashed border-slate-700 hover:border-slate-500 flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+                title="Segment hinzufügen"
+              >
+                <span class="text-4xl text-slate-500 group-hover:text-slate-300 font-light">+</span>
+                <span class="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs text-slate-500 group-hover:text-slate-300 uppercase tracking-widest">Hinzufügen</span>
+              </button>
+            </div>
+
+            <!-- Zoomable Canvas (CSS transform applied via JS) -->
+            <div id="build-canvas" class="absolute top-0 left-0 hidden" style="transform-origin: 0 0; will-change: transform;">
+              <div id="scenery-row" class="flex flex-row items-start gap-0 select-none">
+                <!-- Buildings inserted dynamically -->
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- MODAL: Building Selector Popup -->
+    <div id="modal-selector" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-5xl max-h-[85vh] flex flex-col shadow-2xl">
+        <!-- Header -->
+        <div class="p-6 border-b border-slate-800 flex justify-between items-center">
+          <div>
+            <h3 class="text-xl font-bold text-white">Segment auswählen</h3>
+            <p class="text-xs text-slate-400 mt-1">Wählen Sie ein Gebäude aus. Die Fenster sind im Vorschaubild markiert.</p>
+          </div>
+          <button id="btn-close-selector" class="p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
+            <span class="text-xl leading-none">✕</span>
+          </button>
+        </div>
+        <!-- Grid list of images -->
+        <div id="selector-grid" class="p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-950/40">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Sequence Editor -->
+    <div id="modal-sequence-editor" class="fixed inset-0 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center z-50 p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl">
+        <div class="p-4 border-b border-slate-800 flex items-center gap-3">
+          <input id="seq-editor-name" type="text" placeholder="Ablauf-Name" class="flex-grow bg-slate-950 border border-slate-700 text-slate-100 rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-indigo-500" />
+          <button id="btn-close-seq-editor" class="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition flex-shrink-0">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div id="seq-editor-steps" class="flex-grow overflow-y-auto p-4 space-y-1.5 min-h-[120px]">
+          <!-- Populated by JS -->
+        </div>
+        <div class="p-4 border-t border-slate-800 flex gap-2">
+          <button id="btn-seq-add-step" class="flex-grow py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg font-medium text-xs border border-slate-700 transition flex items-center justify-center gap-1">
+            <span class="font-bold text-sm leading-none">+</span> Schritt hinzufügen
+          </button>
+          <button id="btn-seq-save" class="px-4 py-2 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg font-semibold text-xs transition">
+            Speichern
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODAL: Step Config -->
+    <div id="modal-step-config" class="fixed inset-0 bg-black/60 hidden flex items-center justify-center z-[60] p-4">
+      <div class="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-sm flex flex-col shadow-2xl">
+        <div class="px-4 pt-4 pb-2 flex items-center justify-between border-b border-slate-800">
+          <h4 class="text-sm font-bold text-slate-200">Schritt konfigurieren</h4>
+          <button id="btn-close-step-config" class="p-1.5 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" /></svg>
+          </button>
+        </div>
+        <div id="step-type-tabs" class="flex gap-1 px-4 pt-3 pb-1">
+          <button class="step-type-btn flex-1 py-1.5 text-[10px] font-bold rounded-md bg-slate-800 text-slate-200 border border-slate-700 transition" data-type="delay">⏱ Pause</button>
+          <button class="step-type-btn flex-1 py-1.5 text-[10px] font-bold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition" data-type="color">◉ Farbe</button>
+          <button class="step-type-btn flex-1 py-1.5 text-[10px] font-bold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition" data-type="transition">↗ Überblendung</button>
+          <button class="step-type-btn flex-1 py-1.5 text-[10px] font-bold rounded-md text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 transition" data-type="flicker">~ Flimmern</button>
+        </div>
+        <div id="step-config-form" class="p-4 space-y-3 text-xs">
+          <!-- Dynamic form -->
+        </div>
+        <div class="px-4 pb-4 flex gap-2">
+          <button id="btn-step-config-save" class="flex-grow py-2 bg-indigo-700 hover:bg-indigo-600 text-white rounded-lg font-semibold text-xs transition">Übernehmen</button>
+          <button id="btn-step-config-cancel" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs border border-slate-700 transition">Abbrechen</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- MAIN APP SCRIPT -->
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

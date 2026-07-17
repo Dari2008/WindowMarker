@@ -1,0 +1,15 @@
+count,description,filename
+7,70mm,house1.dxf
+2,"70mm (nahe Bodenkante, <= 40mm)",house1.dxf
+2,Seitenteile (75x33mm),footprint-75x33mm.dxf
+2,Innere Seitenteile (75x33mm),footprint-75x33mm.dxf
+2,Seitenteile (75x36mm),footprint-75x36mm.dxf
+2,Innere Seitenteile (75x36mm),footprint-75x36mm.dxf
+8,Seitenteile (75x37mm),footprint-75x37mm.dxf
+8,Innere Seitenteile (75x37mm),footprint-75x37mm.dxf
+2,Seitenteile (75x42mm),footprint-75x42mm.dxf
+2,Innere Seitenteile (75x42mm),footprint-75x42mm.dxf
+7,Verbinder,house1.dxf
+2,Gebaeudekontur mit Fensterscheiben,house1_outline_with_panes.dxf
+2,Kontur horizontal,house1_outline.dxf
+2,Kontur vertikal,house1_outline.dxf

@@ -1,0 +1,769 @@
+{
+  "name": "house1",
+  "windows": [
+    {
+      "x": 342,
+      "y": 500,
+      "w": 71,
+      "h": 123,
+      "ledIndex": 6,
+      "pixelIndex": 5
+    },
+    {
+      "x": 496,
+      "y": 500,
+      "w": 70,
+      "h": 123,
+      "ledIndex": 7,
+      "pixelIndex": 6
+    },
+    {
+      "x": 664,
+      "y": 500,
+      "w": 69,
+      "h": 123,
+      "ledIndex": 8,
+      "pixelIndex": 7
+    },
+    {
+      "x": 1007,
+      "y": 500,
+      "w": 71,
+      "h": 123,
+      "ledIndex": 9,
+      "pixelIndex": 8
+    },
+    {
+      "x": 1175,
+      "y": 500,
+      "w": 70,
+      "h": 123,
+      "ledIndex": 10,
+      "pixelIndex": 9
+    },
+    {
+      "x": 1328,
+      "y": 500,
+      "w": 68,
+      "h": 122,
+      "ledIndex": 11,
+      "pixelIndex": 10
+    },
+    {
+      "x": 1184,
+      "y": 298,
+      "w": 62,
+      "h": 95,
+      "ledIndex": 12,
+      "pixelIndex": 11
+    },
+    {
+      "x": 1330,
+      "y": 298,
+      "w": 63,
+      "h": 95,
+      "ledIndex": 13,
+      "pixelIndex": 12
+    },
+    {
+      "x": 1478,
+      "y": 298,
+      "w": 66,
+      "h": 96,
+      "ledIndex": 14,
+      "pixelIndex": 13
+    },
+    {
+      "x": 1178,
+      "y": 965,
+      "w": 64,
+      "h": 123,
+      "ledIndex": 18,
+      "pixelIndex": 17
+    },
+    {
+      "x": 1331,
+      "y": 965,
+      "w": 63,
+      "h": 122,
+      "ledIndex": 19,
+      "pixelIndex": 18
+    },
+    {
+      "x": 1482,
+      "y": 964,
+      "w": 64,
+      "h": 123,
+      "ledIndex": 20,
+      "pixelIndex": 19
+    },
+    {
+      "x": 196,
+      "y": 971,
+      "w": 113,
+      "h": 163,
+      "ledIndex": 0,
+      "pixelIndex": 0
+    },
+    {
+      "x": 466,
+      "y": 971,
+      "w": 110,
+      "h": 163,
+      "ledIndex": 2,
+      "pixelIndex": 1
+    },
+    {
+      "x": 192,
+      "y": 723,
+      "w": 69,
+      "h": 123,
+      "ledIndex": 3,
+      "pixelIndex": 2
+    },
+    {
+      "x": 344,
+      "y": 723,
+      "w": 69,
+      "h": 123,
+      "ledIndex": 4,
+      "pixelIndex": 3
+    },
+    {
+      "x": 496,
+      "y": 723,
+      "w": 70,
+      "h": 123,
+      "ledIndex": 5,
+      "pixelIndex": 4
+    },
+    {
+      "x": 1176,
+      "y": 723,
+      "w": 69,
+      "h": 123,
+      "ledIndex": 15,
+      "pixelIndex": 14
+    },
+    {
+      "x": 1329,
+      "y": 723,
+      "w": 67,
+      "h": 123,
+      "ledIndex": 16,
+      "pixelIndex": 15
+    },
+    {
+      "x": 1481,
+      "y": 723,
+      "w": 68,
+      "h": 122,
+      "ledIndex": 17,
+      "pixelIndex": 16
+    }
+  ],
+  "glassPanes": [
+    {
+      "x": 354,
+      "y": 509,
+      "w": 50,
+      "h": 27
+    },
+    {
+      "x": 354,
+      "y": 547,
+      "w": 18,
+      "h": 68
+    },
+    {
+      "x": 385,
+      "y": 547,
+      "w": 20,
+      "h": 68
+    },
+    {
+      "x": 506,
+      "y": 547,
+      "w": 20,
+      "h": 68
+    },
+    {
+      "x": 506,
+      "y": 509,
+      "w": 50,
+      "h": 27
+    },
+    {
+      "x": 537,
+      "y": 547,
+      "w": 19,
+      "h": 68
+    },
+    {
+      "x": 673,
+      "y": 548,
+      "w": 20,
+      "h": 67
+    },
+    {
+      "x": 674,
+      "y": 509,
+      "w": 49,
+      "h": 27
+    },
+    {
+      "x": 705,
+      "y": 547,
+      "w": 18,
+      "h": 68
+    },
+    {
+      "x": 1016,
+      "y": 509,
+      "w": 50,
+      "h": 27
+    },
+    {
+      "x": 1016,
+      "y": 547,
+      "w": 19,
+      "h": 68
+    },
+    {
+      "x": 1047,
+      "y": 547,
+      "w": 20,
+      "h": 68
+    },
+    {
+      "x": 1184,
+      "y": 547,
+      "w": 19,
+      "h": 68
+    },
+    {
+      "x": 1184,
+      "y": 509,
+      "w": 51,
+      "h": 27
+    },
+    {
+      "x": 1215,
+      "y": 547,
+      "w": 19,
+      "h": 68
+    },
+    {
+      "x": 1336,
+      "y": 509,
+      "w": 49,
+      "h": 27
+    },
+    {
+      "x": 1336,
+      "y": 547,
+      "w": 18,
+      "h": 68
+    },
+    {
+      "x": 1366,
+      "y": 547,
+      "w": 19,
+      "h": 68
+    },
+    {
+      "x": 1195,
+      "y": 333,
+      "w": 12,
+      "h": 47
+    },
+    {
+      "x": 1219,
+      "y": 333,
+      "w": 13,
+      "h": 48
+    },
+    {
+      "x": 1342,
+      "y": 333,
+      "w": 12,
+      "h": 48
+    },
+    {
+      "x": 1366,
+      "y": 333,
+      "w": 13,
+      "h": 48
+    },
+    {
+      "x": 1492,
+      "y": 333,
+      "w": 13,
+      "h": 48
+    },
+    {
+      "x": 1517,
+      "y": 333,
+      "w": 11,
+      "h": 48
+    },
+    {
+      "x": 1184,
+      "y": 1009,
+      "w": 19,
+      "h": 69
+    },
+    {
+      "x": 1215,
+      "y": 1009,
+      "w": 19,
+      "h": 69
+    },
+    {
+      "x": 1184,
+      "y": 973,
+      "w": 49,
+      "h": 24
+    },
+    {
+      "x": 1337,
+      "y": 1009,
+      "w": 17,
+      "h": 69
+    },
+    {
+      "x": 1337,
+      "y": 973,
+      "w": 48,
+      "h": 24
+    },
+    {
+      "x": 1366,
+      "y": 1009,
+      "w": 20,
+      "h": 69
+    },
+    {
+      "x": 1488,
+      "y": 1009,
+      "w": 18,
+      "h": 69
+    },
+    {
+      "x": 1488,
+      "y": 973,
+      "w": 48,
+      "h": 24
+    },
+    {
+      "x": 1518,
+      "y": 1009,
+      "w": 19,
+      "h": 69
+    },
+    {
+      "x": 202,
+      "y": 1011,
+      "w": 103,
+      "h": 119
+    },
+    {
+      "x": 471,
+      "y": 1010,
+      "w": 101,
+      "h": 120
+    },
+    {
+      "x": 203,
+      "y": 731,
+      "w": 50,
+      "h": 26
+    },
+    {
+      "x": 234,
+      "y": 769,
+      "w": 19,
+      "h": 69
+    },
+    {
+      "x": 203,
+      "y": 769,
+      "w": 19,
+      "h": 69
+    },
+    {
+      "x": 354,
+      "y": 769,
+      "w": 20,
+      "h": 69
+    },
+    {
+      "x": 386,
+      "y": 769,
+      "w": 19,
+      "h": 69
+    },
+    {
+      "x": 354,
+      "y": 731,
+      "w": 51,
+      "h": 26
+    },
+    {
+      "x": 506,
+      "y": 769,
+      "w": 20,
+      "h": 68
+    },
+    {
+      "x": 506,
+      "y": 731,
+      "w": 51,
+      "h": 26
+    },
+    {
+      "x": 538,
+      "y": 769,
+      "w": 19,
+      "h": 69
+    },
+    {
+      "x": 1184,
+      "y": 769,
+      "w": 19,
+      "h": 67
+    },
+    {
+      "x": 1184,
+      "y": 731,
+      "w": 51,
+      "h": 26
+    },
+    {
+      "x": 1215,
+      "y": 769,
+      "w": 19,
+      "h": 67
+    },
+    {
+      "x": 1336,
+      "y": 769,
+      "w": 18,
+      "h": 67
+    },
+    {
+      "x": 1336,
+      "y": 731,
+      "w": 50,
+      "h": 26
+    },
+    {
+      "x": 1366,
+      "y": 769,
+      "w": 20,
+      "h": 67
+    },
+    {
+      "x": 1488,
+      "y": 769,
+      "w": 18,
+      "h": 67
+    },
+    {
+      "x": 1488,
+      "y": 731,
+      "w": 50,
+      "h": 26
+    },
+    {
+      "x": 1519,
+      "y": 769,
+      "w": 19,
+      "h": 67
+    }
+  ],
+  "dpi": 150.0,
+  "ledBatches": [
+    {
+      "id": "9c3b2cee",
+      "variantId": "70mm",
+      "x": 1216.4,
+      "y": 298.0,
+      "flipped": false,
+      "leds": [
+        {
+          "index": 0,
+          "chainIndex": 12,
+          "pixelIndex": 11,
+          "enabled": true,
+          "windowIndex": 6,
+          "manual": false
+        },
+        {
+          "index": 1,
+          "chainIndex": 13,
+          "pixelIndex": 12,
+          "enabled": true,
+          "windowIndex": 7,
+          "manual": false
+        },
+        {
+          "index": 2,
+          "chainIndex": 14,
+          "pixelIndex": 13,
+          "enabled": true,
+          "windowIndex": 8,
+          "manual": false
+        }
+      ],
+      "width_mm": 75.0,
+      "height_mm": 33
+    },
+    {
+      "id": "7808ca3a",
+      "variantId": "70mm",
+      "x": 389.9,
+      "y": 500,
+      "flipped": false,
+      "leds": [
+        {
+          "index": 0,
+          "chainIndex": 6,
+          "pixelIndex": 5,
+          "enabled": true,
+          "windowIndex": 0,
+          "manual": false
+        },
+        {
+          "index": 1,
+          "chainIndex": 7,
+          "pixelIndex": 6,
+          "enabled": true,
+          "windowIndex": 1,
+          "manual": false
+        },
+        {
+          "index": 2,
+          "chainIndex": 8,
+          "pixelIndex": 7,
+          "enabled": true,
+          "windowIndex": 2,
+          "manual": false
+        }
+      ],
+      "width_mm": 75.0,
+      "height_mm": 37
+    },
+    {
+      "id": "ce37a87c",
+      "variantId": "70mm",
+      "x": 1053.9,
+      "y": 500,
+      "flipped": false,
+      "leds": [
+        {
+          "index": 0,
+          "chainIndex": 9,
+          "pixelIndex": 8,
+          "enabled": true,
+          "windowIndex": 3,
+          "manual": false
+        },
+        {
+          "index": 1,
+          "chainIndex": 10,
+          "pixelIndex": 9,
+          "enabled": true,
+          "windowIndex": 4,
+          "manual": false
+        },
+        {
+          "index": 2,
+          "chainIndex": 11,
+          "pixelIndex": 10,
+          "enabled": true,
+          "windowIndex": 5,
+          "manual": false
+        }
+      ],
+      "width_mm": 75.0,
+      "height_mm": 36
+    },
+    {
+      "id": "67642b19",
+      "variantId": "70mm",
+      "x": 231.4,
+      "y": 723.0,
+      "flipped": false,
+      "leds": [
+        {
+          "index": 0,
+          "chainIndex": 3,
+          "pixelIndex": 2,
+          "enabled": true,
+          "windowIndex": 14,
+          "manual": false
+        },
+        {
+          "index": 1,
+          "chainIndex": 4,
+          "pixelIndex": 3,
+          "enabled": true,
+          "windowIndex": 15,
+          "manual": false
+        },
+        {
+          "index": 2,
+          "chainIndex": 5,
+          "pixelIndex": 4,
+          "enabled": true,
+          "windowIndex": 16,
+          "manual": false
+        }
+      ],
+      "width_mm": 75.0,
+      "height_mm": 37
+    },
+    {
+      "id": "ff1729bf",
+      "variantId": "70mm",
+      "x": 1214.9,
+      "y": 723,
+      "flipped": true,
+      "leds": [
+        {
+          "index": 0,
+          "chainIndex": 17,
+          "pixelIndex": 16,
+          "enabled": true,
+          "windowIndex": 19,
+          "manual": false
+        },
+        {
+          "index": 1,
+          "chainIndex": 16,
+          "pixelIndex": 15,
+          "enabled": true,
+          "windowIndex": 18,
+          "manual": false
+        },
+        {
+          "index": 2,
+          "chainIndex": 15,
+          "pixelIndex": 14,
+          "enabled": true,
+          "windowIndex": 17,
+          "manual": false
+        }
+      ],
+      "width_mm": 75.0,
+      "height_mm": 37
+    },
+    {
+      "id": "603c29dc",
+      "variantId": "70mm",
+      "x": 218.7,
+      "y": 971.0,
+      "flipped": true,
+      "leds": [
+        {
+          "index": 0,
+          "chainIndex": 2,
+          "pixelIndex": 1,
+          "enabled": true,
+          "windowIndex": 13,
+          "manual": false
+        },
+        {
+          "index": 1,
+          "chainIndex": 1,
+          "pixelIndex": null,
+          "enabled": false,
+          "windowIndex": null,
+          "manual": false
+        },
+        {
+          "index": 2,
+          "chainIndex": 0,
+          "pixelIndex": 0,
+          "enabled": true,
+          "windowIndex": 12,
+          "manual": false
+        }
+      ],
+      "width_mm": 75.0,
+      "height_mm": 42
+    },
+    {
+      "id": "f31194a1",
+      "variantId": "70mm",
+      "x": 1213.1,
+      "y": 964.0,
+      "flipped": false,
+      "leds": [
+        {
+          "index": 0,
+          "chainIndex": 18,
+          "pixelIndex": 17,
+          "enabled": true,
+          "windowIndex": 9,
+          "manual": false
+        },
+        {
+          "index": 1,
+          "chainIndex": 19,
+          "pixelIndex": 18,
+          "enabled": true,
+          "windowIndex": 10,
+          "manual": false
+        },
+        {
+          "index": 2,
+          "chainIndex": 20,
+          "pixelIndex": 19,
+          "enabled": true,
+          "windowIndex": 11,
+          "manual": false
+        }
+      ],
+      "width_mm": 75.0,
+      "height_mm": 37
+    }
+  ],
+  "chainOrder": [
+    "603c29dc",
+    "67642b19",
+    "7808ca3a",
+    "ce37a87c",
+    "9c3b2cee",
+    "ff1729bf",
+    "f31194a1"
+  ],
+  "disabledLeds": [
+    1
+  ],
+  "totalLedCount": 21,
+  "totalPixelCount": 20,
+  "dataChain": [
+    "0-0",
+    "2-2",
+    "3-3",
+    "4-4",
+    "5-5",
+    "6-6",
+    "7-7",
+    "8-8",
+    "9-9",
+    "10-10",
+    "11-11",
+    "12-12",
+    "13-13",
+    "14-14",
+    "15-15",
+    "16-16",
+    "17-17",
+    "18-18",
+    "19-19",
+    "20-20"
+  ]
+}

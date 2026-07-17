@@ -1,0 +1,25 @@
+{
+  "variant": {
+    "id": "70mm",
+    "name": "70mm",
+    "leds": [
+      {
+        "x_mm": 0.0,
+        "y_mm": 0.0
+      },
+      {
+        "x_mm": 25.0,
+        "y_mm": 0.0
+      },
+      {
+        "x_mm": 50.0,
+        "y_mm": 0.0
+      }
+    ],
+    "dout_mm": {
+      "x_mm": 50.0,
+      "y_mm": 0.0
+    },
+    "footprint": "Led-Footprint-Small.dxf"
+  }
+}
