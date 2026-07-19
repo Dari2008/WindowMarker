@@ -473,8 +473,13 @@ FRAME_MATERIAL_THICKNESS_MM = 3.0
 # Breite des Lochs, QUER zur Zungen-Laengsrichtung -- NICHT von
 # FRAME_TONGUE_HEIGHT_MM abgeleitet (die bestimmt nur, wie weit die Zunge an
 # der Leiste selbst uebersteht, nicht wie breit das Loch im Gegenstueck sein
-# muss).
-FRAME_HOLE_DEPTH_MM = FRAME_MATERIAL_THICKNESS_MM + 0.1
+# muss). GENAU FRAME_MATERIAL_THICKNESS_MM (KEIN zusaetzliches Presssitz-
+# Uebermass mehr) -- der Rand (siehe dxfExport.clip_outline_to_frame, dort
+# um genau diese Materialstaerke nach aussen erweitert) ist exakt so breit
+# wie das Loch tief ist, das Loch darf also NICHT ueber den Rand
+# hinausragen, sonst waere es teilweise ausserhalb der geschnittenen
+# Kontur-Flaeche statt vollstaendig darin zu liegen.
+FRAME_HOLE_DEPTH_MM = FRAME_MATERIAL_THICKNESS_MM
 # Abstand vom jeweiligen Ende, ab dem die erste wiederkehrende Laengskanten-
 # Zunge sitzt -- laesst Platz fuer den Eckstoss dort (Schaetzwert, siehe
 # Modul-Docstring/Uebergabe an den Nutzer -- im Code leicht anpassbar).
@@ -560,21 +565,33 @@ def frame_strip_tongue_hole_positions(length_mm: float) -> list:
     einer bei (0,0) beginnenden, entlang X verlaufenden Rahmenleiste
     dieser Laenge, siehe _get_frame_strip_points), die deren wieder-
     kehrende Laengskanten-Zungen in die Hauskontur schneiden muessen
-    (siehe windowMarker/dxfExport.py) -- EIN Loch je Zungen-Position,
-    FRAME_TONGUE_WIDTH_MM breit x FRAME_HOLE_DEPTH_MM hoch (3.1mm --
-    Materialstaerke der Leiste + Presssitz-Luft, siehe dort). Liegt komplett
-    auf der lokalen NEGATIVEN Y-Seite (Y=0 bis Y=-FRAME_HOLE_DEPTH_MM) --
-    Y=0 ist die Kante, an der die Leiste an der Hauskontur anliegt, negative
-    Y ist dieselbe 'nach aussen'-Richtung, in die auch die Zunge selbst
-    ragt (siehe _get_frame_strip_points). NICHT mehr mittig um Y=0 (das
-    liesse die Haelfte des Lochs ins Hausinnere hineinragen) -- das Loch
-    soll komplett im Rand (dem Materialstreifen) liegen. Der Aufrufer
-    (dxfExport.frame_side_hole_rects_mm) spiegelt diese 'nach aussen'-
-    Richtung je nach Haus-Seite passend (links/oben behalten sie, rechts/
-    unten drehen sie um)."""
-    tw = FRAME_TONGUE_WIDTH_MM
+    (siehe windowMarker/dxfExport.py) -- EIN Loch je Zungen-Position.
+
+    Die beiden Loch-Dimensionen sind ABSICHTLICH unterschiedlich behandelt:
+    - Tiefe (quer zur Zungen-Laengsrichtung) = FRAME_HOLE_DEPTH_MM, GENAU
+      FRAME_MATERIAL_THICKNESS_MM, OHNE jedes Presssitz-Mass -- diese Seite
+      muss exakt zur aussen um dieselbe Materialstaerke erweiterten Kontur
+      passen (siehe dxfExport.clip_outline_to_frame), ein Uebermass wuerde
+      hier ueber die beschnittene Kontur hinausragen.
+    - Breite (entlang der Zungen-Laengsrichtung) = FRAME_TONGUE_WIDTH_MM
+      MINUS 0.1mm Presssitz-Untermass (0.05mm je Seite, mittig zur Zunge --
+      dieselbe Konvention wie TONGUE_HOLE_UNDERSIZE_MM beim Footprint-
+      Zungen-Loch), damit die Zunge selbst (bleibt bei voller Breite, siehe
+      _get_frame_strip_points) stramm hineinpasst.
+
+    Liegt komplett auf der lokalen NEGATIVEN Y-Seite (Y=0 bis
+    Y=-FRAME_HOLE_DEPTH_MM) -- Y=0 ist die Kante, an der die Leiste an der
+    Hauskontur anliegt, negative Y ist dieselbe 'nach aussen'-Richtung, in
+    die auch die Zunge selbst ragt (siehe _get_frame_strip_points). NICHT
+    mittig um Y=0 (das liesse die Haelfte des Lochs ins Hausinnere
+    hineinragen) -- das Loch soll komplett im Rand (dem Materialstreifen)
+    liegen. Der Aufrufer (dxfExport.frame_side_hole_rects_mm) spiegelt diese
+    'nach aussen'-Richtung je nach Haus-Seite passend (links/oben behalten
+    sie, rechts/unten drehen sie um)."""
+    undersize = 0.1
+    tw = FRAME_TONGUE_WIDTH_MM - undersize
     hd = FRAME_HOLE_DEPTH_MM
-    return [(x, -hd, tw, hd) for x in _frame_repeat_tongue_positions(length_mm)]
+    return [(x + undersize / 2, -hd, tw, hd) for x in _frame_repeat_tongue_positions(length_mm)]
 
 
 def export_all_footprints(sizes: dict, out_dir) -> list:
