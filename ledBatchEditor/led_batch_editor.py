@@ -118,6 +118,13 @@ FOOTPRINT_HEIGHT = 60.0
 FOOTPRINT_RESIZE_TOL_PX = 8
 FOOTPRINT_MIN_MM = 5.0
 
+# Rahmen-Rechteck (siehe App._hit_frame_edge/_cv_dn/_cv_mv, windowMarker.
+# dxfExport.clip_outline_to_frame/frame_side_hole_rects_mm): dieselbe
+# Trefferzone wie bei Footprint-Kanten, und eine Mindestgroesse, damit sich
+# das Rechteck nicht auf 0 oder negativ zusammenziehen laesst.
+FRAME_RESIZE_TOL_PX = 8
+FRAME_MIN_SIZE_MM = 20.0
+
 C = {
     'bg':       '#1e293b',
     'bg_dark':  '#0f172a',
@@ -132,6 +139,7 @@ C = {
     'green':    '#4ade80',
     'red':      '#f87171',
     'amber':    '#fbbf24',
+    'orange':   '#f97316',
 }
 
 
@@ -1044,6 +1052,13 @@ class App:
         self._resize_ref = None       # (edge, start_x, start_y, w0_mm, h0_mm) siehe _hit_footprint_edge
         self._hover = None            # (ix, iy) Anker der Platzierungs-Vorschau (Schatten)
 
+        # Rahmen-Rechteck der 4 Rahmenleisten (siehe windowMarker.footprintScale.
+        # get_frame_side_points/get_frame_top_points, dxfExport.
+        # clip_outline_to_frame) -- (left, top, right, bottom) in Bild-px, siehe
+        # _default_frame_rect_px/_hit_frame_edge. None, solange kein Bild geladen ist.
+        self.frame_rect_px: tuple | None = None
+        self._frame_resize_ref = None  # (edge, start_x, start_y, rect0) siehe _hit_frame_edge
+
         self._save_after = None
 
         self._style()
@@ -1521,6 +1536,7 @@ class App:
                 # einzelnen Dateien weiter unten wie gewohnt geschrieben
                 # werden -- (Doc, Stueckzahl)-Paare, siehe nest_parts_sheet.
                 sheet_items: list = []
+                frame_rect = None
 
                 if entries:
                     written.append(dxfExport.export_dxf(
@@ -1566,12 +1582,25 @@ class App:
                          'w': w['w'] / px_per_mm, 'h': w['h'] / px_per_mm}
                         for w in house_data.get('windows', [])
                     ]
+                    # Rahmen-Rechteck (siehe App._frame_rect_px/_default_frame_px):
+                    # per Hand gesetzt (house_data['frame'], Bild-px) oder Default =
+                    # Bounding-Box der Kontur selbst (siehe dxfExport.Outline) --
+                    # bestimmt sowohl den Beschnitt (links/rechts/unten gerade,
+                    # oben bleibt die Kontur wie sie ist) als auch die Laenge der
+                    # 4 Rahmenleisten weiter unten.
+                    frame_px = house_data.get('frame')
+                    if frame_px:
+                        frame_rect = (frame_px['left'] / px_per_mm, frame_px['top'] / px_per_mm,
+                                    frame_px['right'] / px_per_mm, frame_px['bottom'] / px_per_mm)
+                    else:
+                        frame_rect = (outline.left, outline.top, outline.right, outline.bottom)
+
                     panes_path = exported_dir / f'{csvExport.OUTLINE_WITH_PANES_COUNT}_{name}_outline_with_panes.dxf'
                     written.append(dxfExport.export_outline_with_panes_dxf(
-                        outline, windows, panes_path, entries, variant_size, variant_leds))
+                        outline, windows, panes_path, entries, variant_size, variant_leds, frame_rect))
                     outline_count = csvExport.OUTLINE_HORIZONTAL_COUNT + csvExport.OUTLINE_VERTICAL_COUNT
                     outline_path = exported_dir / f'{outline_count}_{name}_outline.dxf'
-                    written.append(dxfExport.export_outline_only_dxf(outline, outline_path))
+                    written.append(dxfExport.export_outline_only_dxf(outline, outline_path, frame_rect))
 
                     # Die Hauszeichnung selbst gehoert mit aufs Teile-Blatt
                     # (siehe Docstring) -- per readfile() zurueckgelesen, da
@@ -1583,11 +1612,30 @@ class App:
                     sheet_items.append((dxfExport.ezdxf.readfile(str(panes_path)), 1))
                     sheet_items.append((dxfExport.ezdxf.readfile(str(outline_path)), 1))
 
+                    # 4 Rahmenleisten (2x side links/rechts, 2x top oben/unten,
+                    # siehe footprintScale.get_frame_side_points/
+                    # get_frame_top_points) -- Laenge aus dem Rahmen-Rechteck.
+                    frame_left, frame_top, frame_right, frame_bottom = frame_rect
+                    side_length = frame_bottom - frame_top
+                    top_length = frame_right - frame_left
+                    side_doc = footprintScale.get_frame_side_points(side_length)
+                    side_path = exported_dir / f'2_frameside-{side_length:g}mm.dxf'
+                    side_doc.saveas(str(side_path))
+                    written.append(side_path)
+                    sheet_items.append((side_doc, 2))
+
+                    top_doc = footprintScale.get_frame_top_points(top_length)
+                    top_path = exported_dir / f'2_frametop-{top_length:g}mm.dxf'
+                    top_doc.saveas(str(top_path))
+                    written.append(top_path)
+                    sheet_items.append((top_doc, 2))
+
                 if sheet_items:
                     written.append(footprintScale.nest_parts_sheet(
                         sheet_items, exported_dir / f'{name}_parts_combined.dxf'))
 
-                rows = csvExport.get_part_counts(house_data, variant, outline, house_name=name)
+                rows = csvExport.get_part_counts(house_data, variant, outline, house_name=name,
+                                                frame_rect=frame_rect)
                 if rows:
                     written.append(csvExport.export_csv(rows, exported_dir / f'{name}.csv'))
         except Exception as ex:
@@ -1680,6 +1728,7 @@ class App:
         self.windows = data.get('windows', [])
         self.placements = [self._migrate_placement(p) for p in data.get('ledBatches', [])]
         self.chain_order = list(data.get('chainOrder', []))
+        self.frame_rect_px = self._resolve_frame_rect_px(data.get('frame'), path, im)
 
         # DPI-Prioritaet: JSON > Bilddatei-Metadaten > Standard
         file_dpi = None
@@ -1728,6 +1777,30 @@ class App:
                 led['enabled'] = bool(saved.get('enabled', False))
             out['leds'].append(led)
         return out
+
+    def _resolve_frame_rect_px(self, frame_data: dict | None, path: Path, im: 'Image.Image') -> tuple:
+        """(left, top, right, bottom) in Bild-px fuer das Rahmen-Rechteck
+        (siehe self.frame_rect_px/_hit_frame_edge). Per Hand gesetzt
+        (`frame_data` aus dem JSON, siehe _save) gewinnt immer. Ohne das:
+        Default = die INNERSTE Bounding-Box der Gebaeude-KONTUR selbst (siehe
+        dxfExport.Outline.inner_bbox/house_outline, hier mit px_per_mm=1.0
+        aufgerufen, damit sie in denselben Bild-px wie windows/placements
+        steht) -- hat NICHTS mit den Fenstern zu tun, nur mit der Kontur.
+        'Innerste' statt der aeusseren Huelle, weil die nachgezeichnete Kontur
+        aus mehreren Teilpfaden bestehen kann (siehe inner_bbox) -- ragt einer
+        davon weiter raus, soll der Rahmen trotzdem nur so weit reichen wie
+        ALLE Teilpfade gemeinsam. Ohne PDF-Quelle (aeltere Bild-Haeuser ohne
+        nachgezeichnete Kontur, siehe pdfHouse) faellt das auf die volle
+        Bildgroesse zurueck."""
+        if frame_data:
+            return (frame_data['left'], frame_data['top'],
+                    frame_data['right'], frame_data['bottom'])
+        outline_px = None
+        if dxfExport is not None and path.suffix.lower() == '.pdf':
+            outline_px = dxfExport.house_outline(path, 1.0)
+        if outline_px is not None:
+            return outline_px.inner_bbox()
+        return (0.0, 0.0, float(im.width), float(im.height))
 
     def _reload_windows(self):
         """Liest die Fensterliste frisch von der Platte ein -- der Fenster-Tab
@@ -1816,6 +1889,10 @@ class App:
         data['dpi'] = self.dpi
         data['ledBatches'] = batches_out
         data['windows'] = fresh_windows
+        if self.frame_rect_px is not None:
+            left, top, right, bottom = self.frame_rect_px
+            data['frame'] = {'left': round(left, 1), 'top': round(top, 1),
+                            'right': round(right, 1), 'bottom': round(bottom, 1)}
         valid_ids = {p['id'] for p in self.placements}
         data['chainOrder'] = [pid for pid in self.chain_order if pid in valid_ids]
         data['disabledLeds'] = list(self.disabled_leds)
@@ -2650,6 +2727,8 @@ class App:
 
         self.cv.create_image(int(self.off_x), int(self.off_y), image=self._cache_tk, anchor='nw')
 
+        self._draw_frame_rect(self.cv, self._i2s)
+
         # Fenster (gelb, nur die Fenster -- NICHT die Glasscheiben) + Lichtkegel
         # aktiver LEDs: muss VOR den Verbindungslinien/Lampen gezeichnet werden,
         # damit die Lampen-Symbole oben auf den Kegeln sitzen statt darunter.
@@ -2711,6 +2790,46 @@ class App:
 
         self._draw_measure(self.cv, self._i2s)
         self._draw_scale_drag(self.cv, self._i2s)
+
+    def _draw_frame_rect(self, cv: tk.Canvas, i2s):
+        """Zeichnet das Rahmen-Rechteck (self.frame_rect_px) als DOPPELLINIE
+        in Gruen -- die gezogene Kante selbst PLUS eine zweite, um
+        footprintScale.FRAME_MATERIAL_THICKNESS_MM (3mm) nach aussen versetzte
+        Linie, wie in technischen Zeichnungen ueblich fuer eine Material-/
+        Wandstaerke (das ist die Kontur-Platte, gegen die die Rahmenleisten
+        stossen). Eigene Kanten links/rechts/oben/unten sind per Ziehen
+        unabhaengig verschiebbar (siehe _hit_frame_edge/_cv_dn/_cv_mv, wirkt
+        weiterhin nur auf die INNERE Linie = self.frame_rect_px). Legt fest,
+        wo die 4 Rahmenleisten (footprintScale.get_frame_side_points/
+        get_frame_top_points) sitzen und wo die echte Haus-Kontur beim Export
+        links/rechts/unten gerade abgeschnitten wird (oben bleibt sie
+        unveraendert, siehe dxfExport.clip_outline_to_frame). Zeichnet
+        ZUSAETZLICH in ORANGE jedes Zungen-Loch (siehe dxfExport.
+        frame_side_hole_rects_mm/footprintScale.FRAME_HOLE_DEPTH_MM, 3.1mm x
+        FRAME_TONGUE_WIDTH_MM=10mm), das der Export in die Hauskontur
+        schneiden wuerde -- dieselbe Rechnung wie beim echten Export, nur ueber
+        px_per_mm zurueck in Bild-px umgerechnet, damit man VOR dem Export
+        sieht, wo genau die Rahmenleisten-Zungen die Kontur durchstossen."""
+        if self.frame_rect_px is None:
+            return
+        left, top, right, bottom = self.frame_rect_px
+        x0, y0 = i2s(left, top)
+        x1, y1 = i2s(right, bottom)
+        cv.create_rectangle(x0, y0, x1, y1, outline=C['green'], width=2, dash=(4, 3))
+
+        if dxfExport is None or footprintScale is None:
+            return
+        px_per_mm = self.px_per_mm()
+        thickness_img_px = footprintScale.FRAME_MATERIAL_THICKNESS_MM * px_per_mm
+        ox0, oy0 = i2s(left - thickness_img_px, top - thickness_img_px)
+        ox1, oy1 = i2s(right + thickness_img_px, bottom + thickness_img_px)
+        cv.create_rectangle(ox0, oy0, ox1, oy1, outline=C['green'], width=2, dash=(4, 3))
+
+        frame_rect_mm = (left / px_per_mm, top / px_per_mm, right / px_per_mm, bottom / px_per_mm)
+        for hx, hy, hw, hh in dxfExport.frame_side_hole_rects_mm(frame_rect_mm):
+            hp0 = i2s(hx * px_per_mm, hy * px_per_mm)
+            hp1 = i2s((hx + hw) * px_per_mm, (hy + hh) * px_per_mm)
+            cv.create_rectangle(*hp0, *hp1, outline=C['orange'], fill=C['orange'])
 
     def _draw_dragline(self, cv: tk.Canvas, i2s, pts: list, label: str, color: str):
         """Gemeinsame Zeichenroutine fuer Mess-/Kalibrier-Ziehlinien: eine
@@ -2836,6 +2955,31 @@ class App:
             if left - tol <= x <= right + tol and abs(y - bottom) <= tol:
                 return 'bottom', pi
         return None, -1
+
+    def _hit_frame_edge(self, e):
+        """Welche Kante ('left'/'right'/'top'/'bottom') des Rahmen-Rechtecks
+        (self.frame_rect_px) der Cursor trifft (Toleranz FRAME_RESIZE_TOL_PX),
+        sonst None. Analog zu _hit_footprint_edge, aber fuer GENAU EIN
+        Rechteck mit VIER (statt drei) unabhaengig ziehbaren Kanten -- siehe
+        _cv_dn/_cv_mv."""
+        if self.frame_rect_px is None:
+            return None
+        tol = FRAME_RESIZE_TOL_PX
+        left, top, right, bottom = self.frame_rect_px
+        sl, st = self._i2s(left, top)
+        sr, sb = self._i2s(right, bottom)
+        x, y = e.x, e.y
+        if st - tol <= y <= sb + tol:
+            if abs(x - sl) <= tol:
+                return 'left'
+            if abs(x - sr) <= tol:
+                return 'right'
+        if sl - tol <= x <= sr + tol:
+            if abs(y - st) <= tol:
+                return 'top'
+            if abs(y - sb) <= tol:
+                return 'bottom'
+        return None
 
     def _apply_size_to_selection(self):
         """Setzt width_mm/height_mm ALLER aktuell ausgewaehlten Platzierungen
@@ -3073,6 +3217,15 @@ class App:
             self._resize_ref = (edge, e.x, e.y, w0, h0, epi)
             return
 
+        # 0e) Kein Werkzeug aktiv, keine Footprint-Kante getroffen: Klick auf
+        #     eine Kante des Rahmen-Rechtecks (siehe self.frame_rect_px/
+        #     _hit_frame_edge) startet dessen Resize-Zug (siehe _cv_mv/_cv_up)
+        #     statt eine Platzierung auszuwaehlen/zu verschieben.
+        frame_edge = self._hit_frame_edge(e)
+        if frame_edge is not None:
+            self._frame_resize_ref = (frame_edge, e.x, e.y, self.frame_rect_px)
+            return
+
         # 1) Kein Werkzeug aktiv: bestehende Platzierung treffen (per LED-Punkt
         #    ODER Footprint-Flaeche, siehe _hit_placements_at) -> auswaehlen +
         #    verschieben, sonst Auswahl aufheben (kein Platzieren mehr ohne
@@ -3179,6 +3332,24 @@ class App:
                 self.placements[ti]['width_mm'] = new_w
                 self.placements[ti]['height_mm'] = new_h
             self._render_cv()
+            return
+        if self._frame_resize_ref:
+            edge, x0, y0, rect0 = self._frame_resize_ref
+            left0, top0, right0, bottom0 = rect0
+            min_px = FRAME_MIN_SIZE_MM * self.px_per_mm()
+            dx = (e.x - x0) / self.zoom
+            dy = (e.y - y0) / self.zoom
+            left, top, right, bottom = left0, top0, right0, bottom0
+            if edge == 'left':
+                left = min(left0 + dx, right0 - min_px)
+            elif edge == 'right':
+                right = max(right0 + dx, left0 + min_px)
+            elif edge == 'top':
+                top = min(top0 + dy, bottom0 - min_px)
+            elif edge == 'bottom':
+                bottom = max(bottom0 + dy, top0 + min_px)
+            self.frame_rect_px = (left, top, right, bottom)
+            self._render_cv()
 
     def _cv_up(self, _e):
         if self._pan_ref:
@@ -3200,6 +3371,10 @@ class App:
         if self._resize_ref:
             self._resize_ref = None
             self._render_list_and_save()
+            return
+        if self._frame_resize_ref:
+            self._frame_resize_ref = None
+            self._schedule_save()
 
     def _finish_scale_drag(self):
         """Nach dem Loslassen einer Kalibrierlinie (Werkzeug 'Skalieren'):
@@ -3286,17 +3461,21 @@ class App:
         return result.get('mm')
 
     def _cv_hover(self, e):
-        if not self.img_orig or self._pan_ref or self._move_ref or self._resize_ref:
+        if not self.img_orig or self._pan_ref or self._move_ref or self._resize_ref \
+                or self._frame_resize_ref:
             return
         if not any((self.tool_led_toggle.get(), self.tool_place.get(),
                    self.tool_measure.get(), self.tool_scale.get())):
             # Kein Werkzeug aktiv: Cursor auf JEDER Footprint-Resize-Kante
             # (nicht nur der ausgewaehlten Platzierung) auf einen Doppelpfeil
-            # umstellen (siehe _hit_footprint_edge/_cv_dn), sonst zurueck auf
+            # umstellen (siehe _hit_footprint_edge/_cv_dn), sonst auf eine
+            # Rahmen-Kante (siehe _hit_frame_edge) pruefen, sonst zurueck auf
             # den normalen Crosshair.
             edge, _epi = self._hit_footprint_edge(e)
+            if edge is None:
+                edge = self._hit_frame_edge(e)
             cursor = {'left': 'sb_h_double_arrow', 'right': 'sb_h_double_arrow',
-                      'bottom': 'sb_v_double_arrow'}.get(edge, 'crosshair')
+                      'top': 'sb_v_double_arrow', 'bottom': 'sb_v_double_arrow'}.get(edge, 'crosshair')
             self.cv.configure(cursor=cursor)
         if not self.tool_place.get():
             # Schattenvorschau nur, solange das "Variante platzieren"-Werkzeug

@@ -77,6 +77,17 @@ export_all_footprints(sizes, out_dir)
     'sideplate-outer-{height_mm}mm.dxf'/'sideplate-inner-{height_mm}mm.dxf'.
     Gibt die Liste der geschriebenen Dateipfade zurueck.
 
+get_frame_side_points(length_mm) / get_frame_top_points(length_mm)
+    Rahmenleisten, die aussen an den 4 Seiten des Haus-Umrisses entlanglaufen
+    (side = links/rechts, top = oben/unten). FRAME_DEPTH_MM (11mm, wie die
+    Seitenteile) breiter Querschnitt, an beiden Laengskanten alle
+    FRAME_TONGUE_SPACING_MM (100mm) eine Zunge (steckt durch ein Loch in der
+    Hauskontur, siehe dxfExport.py), an beiden Enden ein Eckstoss (side =
+    Zunge, top = passende Aussparung), siehe _get_frame_strip_points.
+frame_strip_tongue_hole_positions(length_mm)
+    Lokale (x, y, w, h)-Loecher, die die wiederkehrenden Laengskanten-Zungen
+    einer Rahmenleiste dieser Laenge in die Hauskontur schneiden muessen.
+
 nest_parts_sheet(items, out_path, spacing_mm, max_row_width_mm)
     Baut aus `items` ({(ezdxf.Drawing, count)}-Paaren, beliebige Mischung
     aus Footprint-/Bodenplatten-/Seitenteil-/Hauszeichnungs-Docs) EIN
@@ -418,6 +429,152 @@ def get_side_plate_points(height_mm: float, inner: bool) -> ezdxf.document.Drawi
 
     msp.add_lwpolyline(outline, close=True, dxfattribs={'layer': 'OUTLINE', 'color': 1})
     return doc
+
+
+# Rahmenleisten (siehe get_frame_side_points/get_frame_top_points): laufen
+# aussen an den 4 Seiten des Haus-Umrisses entlang -- links/rechts (die
+# "side"-Variante) und oben/unten (die "top"-Variante). FRAME_DEPTH_MM
+# (== SIDE_PLATE_WIDTH_MM, 11mm) breiter Querschnitt, genau wie die
+# Seitenteile. Tragen an BEIDEN Laengskanten alle FRAME_TONGUE_SPACING_MM
+# (100mm) eine nach aussen ragende Zunge -- IDENTISCH bei beiden Varianten,
+# diese Zungen stecken durch ein passendes Loch in der Hauskontur (siehe
+# windowMarker/dxfExport.py). An den beiden ENDEN (den Laengsenden, wo eine
+# side- auf eine top-Leiste trifft -- die 4 Ecken des Rahmens) unter-
+# scheiden sich die Varianten: "side" hat dort eine Zunge, "top" eine
+# Aussparung derselben Tiefe -- zusammen ein Eckstoss an allen 4 Ecken.
+# EIGENE (kleinere) Masse als die wiederkehrenden Laengskanten-Zungen, siehe
+# FRAME_END_TONGUE_WIDTH_MM/FRAME_END_TONGUE_HEIGHT_MM unten -- die 10mm-
+# Breite gilt NUR fuer die Laengskanten-Zungen, nicht fuer den Eckstoss.
+FRAME_DEPTH_MM = SIDE_PLATE_WIDTH_MM
+FRAME_TONGUE_SPACING_MM = 100.0
+FRAME_TONGUE_HEIGHT_MM = 2.9
+# Feste Breite der WIEDERKEHRENDEN Laengskanten-Zungen (nicht von
+# FRAME_DEPTH_MM abgeleitet, gilt NUR fuer diese -- der Eckstoss an den
+# Leisten-ENDEN hat eine eigene, depth/2-basierte Breite, siehe unten).
+FRAME_TONGUE_WIDTH_MM = 10.0
+# Eckstoss an den Leisten-ENDEN (wo side- auf top-Leiste trifft): eigene
+# Masse, unabhaengig von den wiederkehrenden Laengskanten-Zungen. Breite =
+# depth/2 (mit 0.1mm Presssitz-Uebermass bei der Zunge, ohne bei der
+# Aussparung -- Original-Formel), Hoehe (wie weit sie uebersteht/einschneidet)
+# = 3mm, EIGENER Wert, nicht FRAME_TONGUE_HEIGHT_MM (die gilt nur fuer die
+# wiederkehrenden Zungen).
+FRAME_END_TONGUE_WIDTH_MM = FRAME_DEPTH_MM / 2 + 0.1
+FRAME_END_CUTOUT_WIDTH_MM = FRAME_DEPTH_MM / 2
+FRAME_END_TONGUE_HEIGHT_MM = 3.0
+# Materialstaerke der Platten selbst (Hauskontur UND Rahmenleiste, beide aus
+# demselben Plattenmaterial) -- bestimmt die Breite des Lochs, das eine
+# wiederkehrende Laengskanten-Zunge in die Hauskontur schneiden muss (siehe
+# frame_strip_tongue_hole_positions), PLUS 0.1mm Presssitz-Luft. Auch fuer
+# die "Materialstaerke als Doppellinie"-Voransicht der Kontur im Editor
+# UND den entsprechend nach aussen erweiterten Kontur-Beschnitt beim Export
+# gebraucht (siehe led_batch_editor.App._draw_frame_rect,
+# dxfExport.clip_outline_to_frame).
+FRAME_MATERIAL_THICKNESS_MM = 3.0
+# Breite des Lochs, QUER zur Zungen-Laengsrichtung -- NICHT von
+# FRAME_TONGUE_HEIGHT_MM abgeleitet (die bestimmt nur, wie weit die Zunge an
+# der Leiste selbst uebersteht, nicht wie breit das Loch im Gegenstueck sein
+# muss).
+FRAME_HOLE_DEPTH_MM = FRAME_MATERIAL_THICKNESS_MM + 0.1
+# Abstand vom jeweiligen Ende, ab dem die erste wiederkehrende Laengskanten-
+# Zunge sitzt -- laesst Platz fuer den Eckstoss dort (Schaetzwert, siehe
+# Modul-Docstring/Uebergabe an den Nutzer -- im Code leicht anpassbar).
+FRAME_END_MARGIN_MM = 15.0
+
+
+def _frame_repeat_tongue_positions(length_mm: float) -> list:
+    """X-Positionen (linke Kante) der wiederkehrenden Laengskanten-Zungen
+    einer Rahmenleiste dieser Laenge -- alle FRAME_TONGUE_SPACING_MM,
+    mit FRAME_END_MARGIN_MM Abstand zu beiden Enden (Platz fuer den
+    Eckstoss, siehe _get_frame_strip_points)."""
+    xs = []
+    x = FRAME_END_MARGIN_MM
+    while x + FRAME_TONGUE_WIDTH_MM <= length_mm - FRAME_END_MARGIN_MM:
+        xs.append(x)
+        x += FRAME_TONGUE_SPACING_MM
+    return xs
+
+
+def _get_frame_strip_points(length_mm: float, end_as_tongue: bool) -> ezdxf.document.Drawing:
+    """Baut EINE Rahmenleiste: Aussenkontur length_mm x FRAME_DEPTH_MM, mit
+    wiederkehrenden Zungen an beiden Laengskanten (siehe
+    _frame_repeat_tongue_positions, FRAME_TONGUE_WIDTH_MM breit x
+    FRAME_TONGUE_HEIGHT_MM ueberstehend) UND an beiden Enden dem Eckstoss --
+    entweder einer Zunge (`end_as_tongue=True`, FRAME_END_TONGUE_WIDTH_MM
+    breit) oder einer Aussparung (`end_as_tongue=False`,
+    FRAME_END_CUTOUT_WIDTH_MM breit), beide mittig im FRAME_DEPTH_MM breiten
+    Querschnitt, FRAME_END_TONGUE_HEIGHT_MM tief/ueberstehend -- EIGENE Masse,
+    unabhaengig von den wiederkehrenden Laengskanten-Zungen. Gemeinsamer
+    Unterbau fuer get_frame_side_points/get_frame_top_points."""
+    doc, _add_rect = _new_plate_doc()
+    depth = FRAME_DEPTH_MM
+    tw, th = FRAME_TONGUE_WIDTH_MM, FRAME_TONGUE_HEIGHT_MM
+    end_w = FRAME_END_TONGUE_WIDTH_MM if end_as_tongue else FRAME_END_CUTOUT_WIDTH_MM
+    end_th = FRAME_END_TONGUE_HEIGHT_MM
+    end_margin = (depth - end_w) / 2
+    y_lo, y_hi = end_margin, end_margin + end_w
+    positions = _frame_repeat_tongue_positions(length_mm)
+
+    outline = [(0.0, 0.0)]
+    # Unterkante (Y=0), X=0 -> length_mm, mit nach unten ragenden Zungen.
+    for x in positions:
+        outline += [(x, 0.0), (x, -th), (x + tw, -th), (x + tw, 0.0)]
+    outline.append((length_mm, 0.0))
+
+    # Rechtes Ende (Y=0 -> depth): Zunge ragt ueber X=length_mm hinaus,
+    # Aussparung schneidet von X=length_mm nach innen.
+    end_x = length_mm + end_th if end_as_tongue else length_mm - end_th
+    outline += [(length_mm, y_lo), (end_x, y_lo), (end_x, y_hi), (length_mm, y_hi)]
+    outline.append((length_mm, depth))
+
+    # Oberkante (Y=depth), X=length_mm -> 0, mit nach oben ragenden Zungen.
+    for x in reversed(positions):
+        outline += [(x + tw, depth), (x + tw, depth + th), (x, depth + th), (x, depth)]
+    outline.append((0.0, depth))
+
+    # Linkes Ende (Y=depth -> 0): spiegelbildlich zum rechten Ende.
+    start_x = -end_th if end_as_tongue else end_th
+    outline += [(0.0, y_hi), (start_x, y_hi), (start_x, y_lo), (0.0, y_lo)]
+
+    doc.modelspace().add_lwpolyline(outline, close=True, dxfattribs={'layer': 'OUTLINE', 'color': 1})
+    return doc
+
+
+def get_frame_side_points(length_mm: float) -> ezdxf.document.Drawing:
+    """Rahmenleiste fuer LINKS/RECHTS vom Haus -- Zungen an beiden Enden
+    (stecken in die Aussparungen der Oben/Unten-Leisten, siehe
+    get_frame_top_points, an allen 4 Ecken des Rahmens). Siehe
+    _get_frame_strip_points fuer die gemeinsame Konstruktion."""
+    return _get_frame_strip_points(length_mm, end_as_tongue=True)
+
+
+def get_frame_top_points(length_mm: float) -> ezdxf.document.Drawing:
+    """Rahmenleiste fuer OBEN/UNTEN vom Haus -- Aussparungen an beiden
+    Enden (nehmen die Zungen der Links/Rechts-Leisten auf, siehe
+    get_frame_side_points, an allen 4 Ecken des Rahmens). Siehe
+    _get_frame_strip_points fuer die gemeinsame Konstruktion."""
+    return _get_frame_strip_points(length_mm, end_as_tongue=False)
+
+
+def frame_strip_tongue_hole_positions(length_mm: float) -> list:
+    """Liste von (x, y, w, h) -- die Loecher (im LOKALEN Koordinatensystem
+    einer bei (0,0) beginnenden, entlang X verlaufenden Rahmenleiste
+    dieser Laenge, siehe _get_frame_strip_points), die deren wieder-
+    kehrende Laengskanten-Zungen in die Hauskontur schneiden muessen
+    (siehe windowMarker/dxfExport.py) -- EIN Loch je Zungen-Position,
+    FRAME_TONGUE_WIDTH_MM breit x FRAME_HOLE_DEPTH_MM hoch (3.1mm --
+    Materialstaerke der Leiste + Presssitz-Luft, siehe dort). Liegt komplett
+    auf der lokalen NEGATIVEN Y-Seite (Y=0 bis Y=-FRAME_HOLE_DEPTH_MM) --
+    Y=0 ist die Kante, an der die Leiste an der Hauskontur anliegt, negative
+    Y ist dieselbe 'nach aussen'-Richtung, in die auch die Zunge selbst
+    ragt (siehe _get_frame_strip_points). NICHT mehr mittig um Y=0 (das
+    liesse die Haelfte des Lochs ins Hausinnere hineinragen) -- das Loch
+    soll komplett im Rand (dem Materialstreifen) liegen. Der Aufrufer
+    (dxfExport.frame_side_hole_rects_mm) spiegelt diese 'nach aussen'-
+    Richtung je nach Haus-Seite passend (links/oben behalten sie, rechts/
+    unten drehen sie um)."""
+    tw = FRAME_TONGUE_WIDTH_MM
+    hd = FRAME_HOLE_DEPTH_MM
+    return [(x, -hd, tw, hd) for x in _frame_repeat_tongue_positions(length_mm)]
 
 
 def export_all_footprints(sizes: dict, out_dir) -> list:

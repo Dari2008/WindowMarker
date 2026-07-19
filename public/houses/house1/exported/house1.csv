@@ -14,3 +14,5 @@ count,description,filename
 2,Gebaeudekontur mit Fensterscheiben,2_house1_outline_with_panes.dxf
 2,Kontur horizontal,4_house1_outline.dxf
 2,Kontur vertikal,4_house1_outline.dxf
+2,Rahmenleiste seitlich (160.426mm),2_frameside-160.426mm.dxf
+2,Rahmenleiste oben/unten (245.753mm),2_frametop-245.753mm.dxf

@@ -69,6 +69,13 @@ OUTLINE_WITH_PANES_COUNT = 2
 OUTLINE_HORIZONTAL_COUNT = 2
 OUTLINE_VERTICAL_COUNT = 2
 
+# Rahmenleisten (siehe footprintScale.get_frame_side_points/
+# get_frame_top_points): je Haus zwei seitliche (links/rechts, gleiche
+# Laenge = Rahmenhoehe) und zwei horizontale (oben/unten, gleiche Laenge =
+# Rahmenbreite) -- daher je EINE Datei/Zeile mit Stueckzahl 2.
+FRAME_SIDE_COUNT = 2
+FRAME_TOP_COUNT = 2
+
 
 def count_footprint_sizes(entries: list, variant_size: tuple | None = None) -> dict:
     """Zaehlt, wie oft jede (width_mm, height_mm)-Footprint-Groesse unter
@@ -92,7 +99,8 @@ def count_footprint_sizes(entries: list, variant_size: tuple | None = None) -> d
 
 def get_part_counts(house_data: dict, variant: dict | None = None,
                     outline: dxfExport.Outline | None = None,
-                    house_name: str | None = None) -> list:
+                    house_name: str | None = None,
+                    frame_rect: tuple | None = None) -> list:
     """Baut die Stueckliste fuer EIN Haus.
 
     house_data: der geladene <name>.json-Datensatz.
@@ -110,6 +118,10 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
     fuer die 'filename'-Spalte (welche DXF-Datei zu dieser Zeile gehoert).
     Ohne Namen bleibt 'filename' bei den nicht footprint-groessen-bezogenen
     Zeilen leer.
+    frame_rect: (left, top, right, bottom) in mm des Rahmen-Rechtecks (siehe
+    led_batch_editor.App._export_project) -- bestimmt die Laenge der
+    Rahmenleisten-Zeilen. Ohne outline oder frame_rect entfallen diese
+    Zeilen.
 
     Gruppiert nach physischer Platzierung (dxfExport.get_placed_leds()'s
     variantUuid = ledBatches[].id -- eine Platine, unabhaengig davon, wie
@@ -132,7 +144,9 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
          {'count': 5, 'description': 'Verbinder', 'filename': 'haus.dxf'},
          {'count': 2, 'description': 'Gebaeudekontur mit Fensterscheiben', 'filename': '2_haus_outline_with_panes.dxf'},
          {'count': 2, 'description': 'Kontur horizontal', 'filename': '4_haus_outline.dxf'},
-         {'count': 2, 'description': 'Kontur vertikal', 'filename': '4_haus_outline.dxf'}]
+         {'count': 2, 'description': 'Kontur vertikal', 'filename': '4_haus_outline.dxf'},
+         {'count': 2, 'description': 'Rahmenleiste seitlich (150mm)', 'filename': '2_frameside-150mm.dxf'},
+         {'count': 2, 'description': 'Rahmenleiste oben/unten (200mm)', 'filename': '2_frametop-200mm.dxf'}]
     """
     entries = dxfExport.get_placed_leds(house_data)
     if not entries:
@@ -210,6 +224,19 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
                     'description': 'Kontur horizontal', 'filename': outline_only_dxf})
         rows.append({'count': OUTLINE_VERTICAL_COUNT,
                     'description': 'Kontur vertikal', 'filename': outline_only_dxf})
+
+    if outline is not None and frame_rect is not None:
+        frame_left, frame_top, frame_right, frame_bottom = frame_rect
+        side_length = frame_bottom - frame_top
+        top_length = frame_right - frame_left
+        side_label = f'{side_length:g}mm'
+        top_label = f'{top_length:g}mm'
+        side_dxf = f'{FRAME_SIDE_COUNT}_frameside-{side_label}.dxf' if house_name else None
+        top_dxf = f'{FRAME_TOP_COUNT}_frametop-{top_label}.dxf' if house_name else None
+        rows.append({'count': FRAME_SIDE_COUNT,
+                    'description': f'Rahmenleiste seitlich ({side_label})', 'filename': side_dxf})
+        rows.append({'count': FRAME_TOP_COUNT,
+                    'description': f'Rahmenleiste oben/unten ({top_label})', 'filename': top_dxf})
 
     return rows
 
