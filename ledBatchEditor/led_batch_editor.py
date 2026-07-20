@@ -1059,6 +1059,16 @@ class App:
         self.frame_rect_px: tuple | None = None
         self._frame_resize_ref = None  # (edge, start_x, start_y, rect0) siehe _hit_frame_edge
 
+        # Bewegliches Hoehen-Overlay (siehe _build/_render_height_panel):
+        # klickbare Liste aller im Bild vorkommenden Footprint-Hoehen (siehe
+        # resolve_footprint_size) -- Klick markiert ALLE Platzierungen mit
+        # genau dieser Hoehe im Canvas (siehe _draw_footprint). None = keine
+        # Hoehe markiert. Ziehen an der Titelzeile verschiebt das Panel frei
+        # ueber dem Canvas (_height_panel_ref), unabhaengig vom fest
+        # verankerten tools_panel oben rechts.
+        self.height_highlight_mm: float | None = None
+        self._height_panel_ref = None
+
         self._save_after = None
 
         self._style()
@@ -1282,6 +1292,24 @@ class App:
                   takefocus=0).pack(side='left')
         ent_sel_w.bind('<Return>', lambda e: self._apply_size_to_selection())
         ent_sel_h.bind('<Return>', lambda e: self._apply_size_to_selection())
+
+        # Bewegliches Hoehen-Overlay (siehe self.height_highlight_mm/
+        # _render_height_panel/_draw_footprint) -- anders als tools_panel oben
+        # NICHT per relx/rely fest verankert, sondern per Ziehen an der
+        # Titelzeile FREI ueber dem Canvas verschiebbar (place() mit reinen
+        # x/y-Pixelkoordinaten, die _height_panel_mv beim Ziehen aktualisiert).
+        # Default-Position oben links, damit es dem tools_panel (oben rechts)
+        # nicht sofort im Weg steht.
+        self.height_panel = tk.Frame(self.cv, bg=C['bg_panel'], bd=1, relief='solid')
+        self.height_panel.place(x=10, y=10)
+        height_head = tk.Frame(self.height_panel, bg=C['bg_dark'], cursor='fleur')
+        height_head.pack(fill='x')
+        tk.Label(height_head, text='⠿ Höhen', bg=C['bg_dark'], fg=C['muted'],
+                font=('Segoe UI', 8, 'bold')).pack(side='left', padx=6, pady=3)
+        height_head.bind('<ButtonPress-1>', self._height_panel_dn)
+        height_head.bind('<B1-Motion>', self._height_panel_mv)
+        self.height_list_frame = tk.Frame(self.height_panel, bg=C['bg_panel'])
+        self.height_list_frame.pack(fill='both', padx=3, pady=(2, 4))
 
         tk.Frame(main, bg=C['border'], width=1).pack(side='left', fill='y')
 
@@ -1540,7 +1568,8 @@ class App:
 
                 if entries:
                     written.append(dxfExport.export_dxf(
-                        entries, outline, exported_dir / f'{name}.dxf', variant_size, variant_leds))
+                        entries, outline, exported_dir / f'{name}_house_led_overview.dxf',
+                        variant_size, variant_leds))
                     size_counts = csvExport.count_footprint_sizes(entries, variant_size)
                     if size_counts:
                         # Bodenplatte haengt NUR von width_mm ab, Seitenteile
@@ -1577,10 +1606,23 @@ class App:
                                 sheet_items.append((sp_doc, sp_count))
 
                 if outline is not None:
-                    windows = [
-                        {'x': w['x'] / px_per_mm, 'y': w['y'] / px_per_mm,
-                         'w': w['w'] / px_per_mm, 'h': w['h'] / px_per_mm}
-                        for w in house_data.get('windows', [])
+                    # Glasscheiben-Ausschnitte, NICHT die vollen Fensterrahmen
+                    # (siehe dxfExport._draw_outline_with_panes -- der Rahmen
+                    # selbst bleibt Material, nur die Glasflaeche wird
+                    # ausgeschnitten) -- 'glassPanes' (siehe windowTool.
+                    # App._save/_svg_rects: einzeln markierte Scheiben PLUS
+                    # jedes Fenster ohne eigene Scheiben-Unterteilung als
+                    # Ganzes) ist dafuer die richtige Quelle, nicht 'windows'
+                    # (die vollen Rahmen). Fehlt der Schluessel komplett (sehr
+                    # alte, vor dieser Funktion gespeicherte Haus-JSONs), auf
+                    # 'windows' zurueckfallen statt eine leere (lichtdichte)
+                    # Kontur zu erzeugen.
+                    pane_rects = house_data['glassPanes'] if 'glassPanes' in house_data \
+                        else house_data.get('windows', [])
+                    panes = [
+                        {'x': p['x'] / px_per_mm, 'y': p['y'] / px_per_mm,
+                         'w': p['w'] / px_per_mm, 'h': p['h'] / px_per_mm}
+                        for p in pane_rects
                     ]
                     # Rahmen-Rechteck (siehe App._frame_rect_px/_default_frame_px):
                     # per Hand gesetzt (house_data['frame'], Bild-px) oder Default =
@@ -1597,9 +1639,8 @@ class App:
 
                     panes_path = exported_dir / f'{csvExport.OUTLINE_WITH_PANES_COUNT}_{name}_outline_with_panes.dxf'
                     written.append(dxfExport.export_outline_with_panes_dxf(
-                        outline, windows, panes_path, entries, variant_size, variant_leds, frame_rect))
-                    outline_count = csvExport.OUTLINE_HORIZONTAL_COUNT + csvExport.OUTLINE_VERTICAL_COUNT
-                    outline_path = exported_dir / f'{outline_count}_{name}_outline.dxf'
+                        outline, panes, panes_path, entries, variant_size, variant_leds, frame_rect))
+                    outline_path = exported_dir / f'{csvExport.OUTLINE_ONLY_COUNT}_{name}_outline.dxf'
                     written.append(dxfExport.export_outline_only_dxf(outline, outline_path, frame_rect))
 
                     # Die Hauszeichnung selbst gehoert mit aufs Teile-Blatt
@@ -1612,9 +1653,11 @@ class App:
                     sheet_items.append((dxfExport.ezdxf.readfile(str(panes_path)), 1))
                     sheet_items.append((dxfExport.ezdxf.readfile(str(outline_path)), 1))
 
-                    # 4 Rahmenleisten (2x side links/rechts, 2x top oben/unten,
-                    # siehe footprintScale.get_frame_side_points/
-                    # get_frame_top_points) -- Laenge aus dem Rahmen-Rechteck.
+                    # 4 Rahmenleisten (2x side links/rechts -- identisch, EINE
+                    # Datei mit Stueckzahl 2 -- sowie je 1x top OHNE und 1x top
+                    # MIT Mittenloch fuer oben/unten, siehe footprintScale.
+                    # get_frame_side_points/get_frame_top_points/
+                    # get_frame_top_hole_points) -- Laenge aus dem Rahmen-Rechteck.
                     frame_left, frame_top, frame_right, frame_bottom = frame_rect
                     side_length = frame_bottom - frame_top
                     top_length = frame_right - frame_left
@@ -1625,10 +1668,16 @@ class App:
                     sheet_items.append((side_doc, 2))
 
                     top_doc = footprintScale.get_frame_top_points(top_length)
-                    top_path = exported_dir / f'2_frametop-{top_length:g}mm.dxf'
+                    top_path = exported_dir / f'1_frametop-{top_length:g}mm.dxf'
                     top_doc.saveas(str(top_path))
                     written.append(top_path)
-                    sheet_items.append((top_doc, 2))
+                    sheet_items.append((top_doc, 1))
+
+                    top_hole_doc = footprintScale.get_frame_top_hole_points(top_length)
+                    top_hole_path = exported_dir / f'1_frametop-hole-{top_length:g}mm.dxf'
+                    top_hole_doc.saveas(str(top_hole_path))
+                    written.append(top_hole_path)
+                    sheet_items.append((top_hole_doc, 1))
 
                 if sheet_items:
                     written.append(footprintScale.nest_parts_sheet(
@@ -2558,7 +2607,7 @@ class App:
         return din_pt, dout_pt
 
     def _draw_footprint(self, cv: tk.Canvas, i2s, p: dict, variant: dict,
-                        preview: bool = False):
+                        preview: bool = False, highlight: bool = False):
         """Zeichnet die (generierte, siehe windowMarker/footprintScale.py)
         Footprint-Kontur an der tatsaechlichen Bild-Position einer
         Platzierung -- mittig ueber der LED-Ausdehnung (siehe
@@ -2572,11 +2621,20 @@ class App:
         _add_card) -- fehlt sie, gilt der Default der Variante (siehe
         resolve_footprint_size). preview=True (Hover-Schattenvorschau)
         zeichnet sie gedaempft/gestrichelt statt als durchgezogene rote
-        Linie."""
+        Linie. highlight=True (siehe self.height_highlight_mm/
+        _render_height_panel) zeichnet sie stattdessen dick und gelb --
+        Vorrang vor der roten Normalfarbe, damit auf einen Blick sichtbar
+        ist, welche Platzierungen die im Hoehen-Overlay ausgewaehlte Hoehe
+        haben."""
         poly_points = footprint_image_points(
             variant, p['x'], p['y'], self.px_per_mm(), p.get('flipped', False), placement=p)
-        color = C['dim'] if preview else C['red']
-        draw_footprint_polylines(cv, i2s, poly_points, color=color,
+        if preview:
+            color = C['dim']
+        elif highlight:
+            color = C['amber']
+        else:
+            color = C['red']
+        draw_footprint_polylines(cv, i2s, poly_points, color=color, width=3 if highlight else 1,
                                  dash=(2, 2) if preview else None)
 
     def _render_windows_and_cones(self, cv: tk.Canvas, i2s, pts_by_id: dict):
@@ -2752,7 +2810,9 @@ class App:
                                        width=2 if sel else 1)
             variant_p = self.variant
             if variant_p:
-                self._draw_footprint(self.cv, self._i2s, p, variant_p)
+                highlight = (self.height_highlight_mm is not None and
+                            abs(resolve_footprint_size(variant_p, p)[1] - self.height_highlight_mm) < 1e-6)
+                self._draw_footprint(self.cv, self._i2s, p, variant_p, highlight=highlight)
                 self._draw_connector(self.cv, self._i2s, p, variant_p)
             r = (5 if self.zoom >= 0.6 else 3)
             for li, (sx, sy) in enumerate(spts):
@@ -3099,6 +3159,16 @@ class App:
             self._space_used_for_pan = True  # war Halten+Ziehen -> beim Loslassen NICHT spiegeln
             self.cv.configure(cursor='fleur')
             return
+
+        # Jeder "echte" Klick auf den Canvas (kein Pan) verwirft eine evtl.
+        # aktive Hoehen-Hervorhebung (siehe self.height_highlight_mm/
+        # _toggle_height_highlight) -- sonst blieb sie "haengen" und liess
+        # sich nur durch erneuten Klick auf denselben Eintrag im Hoehen-
+        # Overlay wieder aufheben, was Nutzer nicht erwarten (sie klicken
+        # normalerweise einfach anderswo hin, um etwas abzuwaehlen).
+        if self.height_highlight_mm is not None:
+            self.height_highlight_mm = None
+            self._render_height_panel()
 
         # 0z) "Messen"-Werkzeug aktiv: Klick setzt den Startpunkt eines neuen
         #     Massbands -- ein evtl. vorheriges wird dabei verworfen (immer
@@ -3515,6 +3585,21 @@ class App:
         self._pan_ref = None
         self.cv.configure(cursor='crosshair')
 
+    def _height_panel_dn(self, e):
+        """Start eines Ziehens am Hoehen-Overlay (siehe self.height_panel) --
+        merkt sich Maus- UND Panel-Startposition in BILDSCHIRM-Koordinaten
+        (e.x_root/e.y_root, nicht e.x/e.y: die sind relativ zur Titelzeile
+        selbst, die sich waehrend des Ziehens mitbewegt -- root-Koordinaten
+        bleiben ein stabiler Bezugspunkt)."""
+        self._height_panel_ref = (e.x_root, e.y_root,
+                                  self.height_panel.winfo_x(), self.height_panel.winfo_y())
+
+    def _height_panel_mv(self, e):
+        if not self._height_panel_ref:
+            return
+        x0, y0, px0, py0 = self._height_panel_ref
+        self.height_panel.place(x=px0 + (e.x_root - x0), y=py0 + (e.y_root - y0))
+
     def _scroll(self, e):
         if not self.img_orig:
             return
@@ -3558,6 +3643,7 @@ class App:
         for w in self._p_list_frame.winfo_children():
             w.destroy()
         self._v_count.set(str(len(self.placements)))
+        self._render_height_panel()
 
         if not self.placements:
             msg = ('Variante wählen, dann auf\ndem Bild klicken zum Platzieren\n'
@@ -3569,6 +3655,49 @@ class App:
 
         for i, p in enumerate(self.placements):
             self._add_card(i, p)
+
+    def _render_height_panel(self):
+        """Baut die Liste im beweglichen Hoehen-Overlay neu auf (siehe
+        self.height_panel/height_highlight_mm) -- eine anklickbare Zeile je
+        DISTINKTER Footprint-Hoehe (siehe resolve_footprint_size), mit der
+        Anzahl Platzierungen dieser Hoehe. Klick markiert/entmarkiert diese
+        Hoehe (siehe _toggle_height_highlight) -- ALLE Platzierungen mit
+        GENAU dieser Hoehe werden dann in _draw_footprint hervorgehoben.
+        Von _render_placements() bei jeder Aenderung der Platzierungsliste
+        (neu/geloescht/Groesse geaendert) neu aufgebaut, damit die Liste nie
+        veraltet."""
+        for w in self.height_list_frame.winfo_children():
+            w.destroy()
+        variant = self.variant
+        counts: dict = {}
+        for p in self.placements:
+            _w, h = resolve_footprint_size(variant, p)
+            counts[h] = counts.get(h, 0) + 1
+        if not counts:
+            tk.Label(self.height_list_frame, text='(keine)', bg=C['bg_panel'], fg=C['dim'],
+                    font=('Segoe UI', 8)).pack(anchor='w')
+            return
+        for h in sorted(counts):
+            sel = self.height_highlight_mm is not None and abs(h - self.height_highlight_mm) < 1e-6
+            row = tk.Label(self.height_list_frame, text=f'{h:g} mm  ({counts[h]})',
+                          bg=C['blue_sel'] if sel else C['bg_panel'],
+                          fg=C['text'] if sel else C['muted'],
+                          font=('Segoe UI', 8, 'bold' if sel else 'normal'),
+                          anchor='w', padx=4, pady=1, cursor='hand2')
+            row.pack(fill='x')
+            row.bind('<Button-1>', lambda e, h=h: self._toggle_height_highlight(h))
+
+    def _toggle_height_highlight(self, h: float):
+        """Klick auf eine Zeile im Hoehen-Overlay: markiert diese Hoehe (alle
+        Platzierungen mit genau dieser Hoehe werden im Canvas hervorgehoben,
+        siehe _draw_footprint), oder hebt die Markierung wieder auf, wenn
+        dieselbe Hoehe schon markiert war (Klick = Umschalter)."""
+        if self.height_highlight_mm is not None and abs(h - self.height_highlight_mm) < 1e-6:
+            self.height_highlight_mm = None
+        else:
+            self.height_highlight_mm = h
+        self._render_height_panel()
+        self._render_cv()
 
     def _add_card(self, idx, p):
         sel = (idx in self.sel_idxs)

@@ -1,18 +1,14 @@
 count,description,filename
-7,70mm,house1.dxf
-2,"70mm (nahe Bodenkante, <= 40mm)",house1.dxf
+7,70mm,house1_house_led_overview.dxf
+2,"70mm (nahe Bodenkante, <= 40mm)",house1_house_led_overview.dxf
 7,Bodenplatte (75mm),7_bottomplate-75mm.dxf
-2,Seitenteile (33mm),2_sideplate-outer-33mm.dxf
-2,Innere Seitenteile (33mm),2_sideplate-inner-33mm.dxf
-2,Seitenteile (36mm),2_sideplate-outer-36mm.dxf
-2,Innere Seitenteile (36mm),2_sideplate-inner-36mm.dxf
-8,Seitenteile (37mm),8_sideplate-outer-37mm.dxf
-8,Innere Seitenteile (37mm),8_sideplate-inner-37mm.dxf
-2,Seitenteile (42mm),2_sideplate-outer-42mm.dxf
-2,Innere Seitenteile (42mm),2_sideplate-inner-42mm.dxf
-7,Verbinder,house1.dxf
-2,Gebaeudekontur mit Fensterscheiben,2_house1_outline_with_panes.dxf
-2,Kontur horizontal,4_house1_outline.dxf
-2,Kontur vertikal,4_house1_outline.dxf
+12,Seitenteile (32mm),12_sideplate-outer-32mm.dxf
+12,Innere Seitenteile (32mm),12_sideplate-inner-32mm.dxf
+2,Seitenteile (39mm),2_sideplate-outer-39mm.dxf
+2,Innere Seitenteile (39mm),2_sideplate-inner-39mm.dxf
+7,Verbinder,house1_house_led_overview.dxf
+1,Gebaeudekontur mit Fensterscheiben,1_house1_outline_with_panes.dxf
+1,Gebaeudekontur (ohne Fensterscheiben),1_house1_outline.dxf
 2,Rahmenleiste seitlich (160.426mm),2_frameside-160.426mm.dxf
-2,Rahmenleiste oben/unten (245.753mm),2_frametop-245.753mm.dxf
+1,Rahmenleiste oben/unten (245.753mm),1_frametop-245.753mm.dxf
+1,Rahmenleiste oben/unten mit Loch (245.753mm),1_frametop-hole-245.753mm.dxf

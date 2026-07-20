@@ -517,7 +517,7 @@
         }
       ],
       "width_mm": 75.0,
-      "height_mm": 33
+      "height_mm": 32
     },
     {
       "id": "7808ca3a",
@@ -552,7 +552,7 @@
         }
       ],
       "width_mm": 75.0,
-      "height_mm": 37
+      "height_mm": 32
     },
     {
       "id": "ce37a87c",
@@ -587,7 +587,7 @@
         }
       ],
       "width_mm": 75.0,
-      "height_mm": 36
+      "height_mm": 32
     },
     {
       "id": "67642b19",
@@ -622,7 +622,7 @@
         }
       ],
       "width_mm": 75.0,
-      "height_mm": 37
+      "height_mm": 32
     },
     {
       "id": "ff1729bf",
@@ -657,7 +657,7 @@
         }
       ],
       "width_mm": 75.0,
-      "height_mm": 37
+      "height_mm": 32
     },
     {
       "id": "603c29dc",
@@ -692,7 +692,7 @@
         }
       ],
       "width_mm": 75.0,
-      "height_mm": 42
+      "height_mm": 39
     },
     {
       "id": "f31194a1",
@@ -727,7 +727,7 @@
         }
       ],
       "width_mm": 75.0,
-      "height_mm": 37
+      "height_mm": 32
     }
   ],
   "chainOrder": [

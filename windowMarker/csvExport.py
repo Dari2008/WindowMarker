@@ -62,19 +62,24 @@ BOTTOM_PLATES_PER_PLACEMENT = 1
 CONNECTORS_PER_PLACEMENT = 1
 
 # Feste Anzahl je Haus (unabhaengig von der Zahl der LED-Platzierungen) --
-# die Gehaeuseteile des Lichtkastens: zwei identische Frontteile mit den
-# Fensteroeffnungen (fuer die "Glasscheiben"), sowie je zwei schmale
-# Rahmenleisten horizontal (oben/unten) und vertikal (links/rechts).
-OUTLINE_WITH_PANES_COUNT = 2
-OUTLINE_HORIZONTAL_COUNT = 2
-OUTLINE_VERTICAL_COUNT = 2
+# die Gehaeuseteile des Lichtkastens: EIN Frontteil mit den Glasscheiben-
+# Ausschnitten, sowie EINE reine Kontur ohne Fensteroeffnungen -- beide nur
+# einmal benoetigt (siehe dxfExport.export_outline_with_panes_dxf/
+# export_outline_only_dxf).
+OUTLINE_WITH_PANES_COUNT = 1
+OUTLINE_ONLY_COUNT = 1
 
 # Rahmenleisten (siehe footprintScale.get_frame_side_points/
-# get_frame_top_points): je Haus zwei seitliche (links/rechts, gleiche
-# Laenge = Rahmenhoehe) und zwei horizontale (oben/unten, gleiche Laenge =
-# Rahmenbreite) -- daher je EINE Datei/Zeile mit Stueckzahl 2.
+# get_frame_top_points/get_frame_top_hole_points): je Haus zwei seitliche
+# (links/rechts, gleiche Laenge = Rahmenhoehe, IDENTISCH -- eine Datei mit
+# Stueckzahl 2) sowie zwei horizontale (oben/unten, gleiche Laenge =
+# Rahmenbreite) -- die beiden horizontalen sind NICHT mehr identisch: eine
+# bleibt wie bisher (FRAME_TOP_COUNT), die andere bekommt zusaetzlich ein
+# Mittenloch (FRAME_TOP_HOLE_COUNT, siehe get_frame_top_hole_points) -- daher
+# je EIGENE Datei/Zeile mit Stueckzahl 1 statt einer gemeinsamen mit 2.
 FRAME_SIDE_COUNT = 2
-FRAME_TOP_COUNT = 2
+FRAME_TOP_COUNT = 1
+FRAME_TOP_HOLE_COUNT = 1
 
 
 def count_footprint_sizes(entries: list, variant_size: tuple | None = None) -> dict:
@@ -133,20 +138,20 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
     hat KEINE eigene Zeile/Datei (nur Skizze/Ausschnitt direkt in der
     Hauszeichnung, siehe dxfExport._insert_footprints). Gibt eine Liste von
     {'count', 'description', 'filename'}-Dicts zurueck, z.B.:
-        [{'count': 5, 'description': '70mm', 'filename': 'haus.dxf'},
-         {'count': 2, 'description': '70mm (nahe Bodenkante, <= 40mm)', 'filename': 'haus.dxf'},
+        [{'count': 5, 'description': '70mm', 'filename': 'haus_house_led_overview.dxf'},
+         {'count': 2, 'description': '70mm (nahe Bodenkante, <= 40mm)', 'filename': 'haus_house_led_overview.dxf'},
          {'count': 6, 'description': 'Bodenplatte (10mm)', 'filename': '6_bottomplate-10mm.dxf'},
          {'count': 4, 'description': 'Bodenplatte (75mm)', 'filename': '4_bottomplate-75mm.dxf'},
          {'count': 6, 'description': 'Seitenteile (100mm)', 'filename': '6_sideplate-outer-100mm.dxf'},
          {'count': 6, 'description': 'Innere Seitenteile (100mm)', 'filename': '6_sideplate-inner-100mm.dxf'},
          {'count': 4, 'description': 'Seitenteile (60mm)', 'filename': '4_sideplate-outer-60mm.dxf'},
          {'count': 4, 'description': 'Innere Seitenteile (60mm)', 'filename': '4_sideplate-inner-60mm.dxf'},
-         {'count': 5, 'description': 'Verbinder', 'filename': 'haus.dxf'},
-         {'count': 2, 'description': 'Gebaeudekontur mit Fensterscheiben', 'filename': '2_haus_outline_with_panes.dxf'},
-         {'count': 2, 'description': 'Kontur horizontal', 'filename': '4_haus_outline.dxf'},
-         {'count': 2, 'description': 'Kontur vertikal', 'filename': '4_haus_outline.dxf'},
+         {'count': 5, 'description': 'Verbinder', 'filename': 'haus_house_led_overview.dxf'},
+         {'count': 1, 'description': 'Gebaeudekontur mit Fensterscheiben', 'filename': '1_haus_outline_with_panes.dxf'},
+         {'count': 1, 'description': 'Gebaeudekontur (ohne Fensterscheiben)', 'filename': '1_haus_outline.dxf'},
          {'count': 2, 'description': 'Rahmenleiste seitlich (150mm)', 'filename': '2_frameside-150mm.dxf'},
-         {'count': 2, 'description': 'Rahmenleiste oben/unten (200mm)', 'filename': '2_frametop-200mm.dxf'}]
+         {'count': 1, 'description': 'Rahmenleiste oben/unten (200mm)', 'filename': '1_frametop-200mm.dxf'},
+         {'count': 1, 'description': 'Rahmenleiste oben/unten mit Loch (200mm)', 'filename': '1_frametop-hole-200mm.dxf'}]
     """
     entries = dxfExport.get_placed_leds(house_data)
     if not entries:
@@ -160,7 +165,7 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
     fw = (variant or {}).get('footprint_width_mm')
     fh = (variant or {}).get('footprint_height_mm')
     variant_size = (fw, fh) if fw and fh else None
-    led_dxf = f'{house_name}.dxf' if house_name else None
+    led_dxf = f'{house_name}_house_led_overview.dxf' if house_name else None
 
     rows = [{'count': len(by_placement), 'description': variant_name, 'filename': led_dxf}]
 
@@ -215,15 +220,12 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
 
     if outline is not None:
         panes_count = OUTLINE_WITH_PANES_COUNT
-        outline_count = OUTLINE_HORIZONTAL_COUNT + OUTLINE_VERTICAL_COUNT
         outline_with_panes_dxf = f'{panes_count}_{house_name}_outline_with_panes.dxf' if house_name else None
-        outline_only_dxf = f'{outline_count}_{house_name}_outline.dxf' if house_name else None
+        outline_only_dxf = f'{OUTLINE_ONLY_COUNT}_{house_name}_outline.dxf' if house_name else None
         rows.append({'count': panes_count,
                     'description': 'Gebaeudekontur mit Fensterscheiben', 'filename': outline_with_panes_dxf})
-        rows.append({'count': OUTLINE_HORIZONTAL_COUNT,
-                    'description': 'Kontur horizontal', 'filename': outline_only_dxf})
-        rows.append({'count': OUTLINE_VERTICAL_COUNT,
-                    'description': 'Kontur vertikal', 'filename': outline_only_dxf})
+        rows.append({'count': OUTLINE_ONLY_COUNT,
+                    'description': 'Gebaeudekontur (ohne Fensterscheiben)', 'filename': outline_only_dxf})
 
     if outline is not None and frame_rect is not None:
         frame_left, frame_top, frame_right, frame_bottom = frame_rect
@@ -233,10 +235,13 @@ def get_part_counts(house_data: dict, variant: dict | None = None,
         top_label = f'{top_length:g}mm'
         side_dxf = f'{FRAME_SIDE_COUNT}_frameside-{side_label}.dxf' if house_name else None
         top_dxf = f'{FRAME_TOP_COUNT}_frametop-{top_label}.dxf' if house_name else None
+        top_hole_dxf = f'{FRAME_TOP_HOLE_COUNT}_frametop-hole-{top_label}.dxf' if house_name else None
         rows.append({'count': FRAME_SIDE_COUNT,
                     'description': f'Rahmenleiste seitlich ({side_label})', 'filename': side_dxf})
         rows.append({'count': FRAME_TOP_COUNT,
                     'description': f'Rahmenleiste oben/unten ({top_label})', 'filename': top_dxf})
+        rows.append({'count': FRAME_TOP_HOLE_COUNT,
+                    'description': f'Rahmenleiste oben/unten mit Loch ({top_label})', 'filename': top_hole_dxf})
 
     return rows
 

@@ -560,6 +560,38 @@ def get_frame_top_points(length_mm: float) -> ezdxf.document.Drawing:
     return _get_frame_strip_points(length_mm, end_as_tongue=False)
 
 
+# Zusaetzliches Mittenloch der "top-mit-Loch"-Variante (siehe
+# get_frame_top_hole_points, z.B. fuer eine Kabeldurchfuehrung) -- NUR bei
+# DIESER Variante, nicht bei den anderen 3 Rahmenleisten. FRAME_TOP_HOLE_
+# WIDTH_MM laeuft entlang der Leisten-LAENGSRICHTUNG (X, dieselbe Richtung
+# wie die Gesamtbreite der Leiste), FRAME_TOP_HOLE_DEPTH_MM quer dazu (Y,
+# passt mit Rand in den FRAME_DEPTH_MM=11mm breiten Querschnitt).
+FRAME_TOP_HOLE_WIDTH_MM = 10.5
+FRAME_TOP_HOLE_DEPTH_MM = 6.5
+# Abstand von der Unterkante (Y=0) bis zum Loch -- NICHT mittig im
+# Querschnitt, nur mittig entlang der Laenge (X), siehe unten.
+FRAME_TOP_HOLE_MARGIN_MM = 0.65
+
+
+def get_frame_top_hole_points(length_mm: float) -> ezdxf.document.Drawing:
+    """Wie get_frame_top_points, PLUS ein zusaetzliches rechteckiges
+    Mittenloch (z.B. fuer eine Kabeldurchfuehrung): FRAME_TOP_HOLE_WIDTH_MM
+    (10.5mm) x FRAME_TOP_HOLE_DEPTH_MM (6.5mm), entlang der Leisten-Laenge
+    (X) mittig ueber length_mm zentriert, aber quer dazu (Y) NICHT mittig --
+    FRAME_TOP_HOLE_MARGIN_MM (0.65mm) Abstand zur Unterkante (Y=0), der Rest
+    bleibt zur Oberkante hin frei. EIGENE, separate Datei (siehe
+    led_batch_editor.App._export_project) -- ersetzt eine der beiden sonst
+    identischen top/bottom-Leisten; die andere bleibt unveraendert bei
+    get_frame_top_points."""
+    doc = get_frame_top_points(length_mm)
+    hole_w, hole_h = FRAME_TOP_HOLE_WIDTH_MM, FRAME_TOP_HOLE_DEPTH_MM
+    hx = length_mm / 2 - hole_w / 2
+    hy = FRAME_TOP_HOLE_MARGIN_MM
+    pts = [(hx, hy), (hx + hole_w, hy), (hx + hole_w, hy + hole_h), (hx, hy + hole_h)]
+    doc.modelspace().add_lwpolyline(pts, close=True, dxfattribs={'layer': 'OUTLINE', 'color': 1})
+    return doc
+
+
 def frame_strip_tongue_hole_positions(length_mm: float) -> list:
     """Liste von (x, y, w, h) -- die Loecher (im LOKALEN Koordinatensystem
     einer bei (0,0) beginnenden, entlang X verlaufenden Rahmenleiste

@@ -439,20 +439,25 @@ def _replace_layer_entities(dwg: 'DxfDrawing', layer: str) -> None:
         dwg.msp.delete_entity(e)
 
 
-def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', windows: list,
+def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', panes: list,
                              entries: list | None = None, variant_size: tuple | None = None,
                              variant_leds: list | None = None,
                              frame_rect: tuple | None = None) -> None:
     """Zeichnet den echten Gebaeude-Umriss (siehe Outline.polylines) MIT
-    ALLEN Fensteroeffnungen aus `windows` (bereits in ECHTEN mm, siehe
-    get_placed_leds()'s Umrechnung -- ALLE Fenster des Hauses, nicht nur die
-    von LEDs beleuchteten: eine "Glasscheibe" braucht jedes Fenster,
-    unabhaengig von der Beleuchtung) auf Layer OUTLINE_PANES_LAYER, PLUS
-    (falls `entries` angegeben, siehe get_placed_leds()) je Platzierung ihre
-    Footprint-Kontur als AUSSCHNITT auf OUTLINE_PANES_FOOTPRINT_LAYER --
-    dieselben Positionen wie im LED-/Platinen-Export (siehe
-    _insert_footprints), damit die Platine spaeter genau in dieses Loch der
-    Fensterscheiben-Kontur passt.
+    ALLEN Glasscheiben-Ausschnitten aus `panes` (bereits in ECHTEN mm, siehe
+    get_placed_leds()'s Umrechnung -- NUR die tatsaechliche Glasflaeche, z.B.
+    windowTool._svg_rects()/house_data['glassPanes']: einzeln markierte
+    Scheiben PLUS jedes Fenster ohne eigene Scheiben-Unterteilung als Ganzes
+    -- NICHT der volle Fensterrahmen, der Rahmen selbst bleibt Material) auf
+    Layer OUTLINE_PANES_LAYER, PLUS (falls `entries` angegeben, siehe
+    get_placed_leds()) je Platzierung NUR deren Zungen-Loecher/Ausschnitte
+    (Layer 'PINS', siehe footprintScale.get_footprint_points) auf
+    OUTLINE_PANES_FOOTPRINT_LAYER -- dieselben Positionen wie im LED-/
+    Platinen-Export (siehe _insert_footprints), damit die Bodenplatten-/
+    Seitenteil-Zungen spaeter durch genau diese Loecher passen. OHNE die
+    reine Skizzen-Aussenlinie (Layer 'SKETCH') -- die ist nur eine
+    Ausrichthilfe beim Editieren, kein echter Schnitt (siehe _insert_
+    footprints' `only_layers`).
 
     `frame_rect` ((left, top, right, bottom), ECHTE mm, siehe
     clip_outline_to_frame): WENN angegeben, wird die Kontur links/rechts/
@@ -474,50 +479,50 @@ def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', windows: lis
                                          frame_bottom + thick)
     for poly in polylines:
         dwg.add_polyline(poly, closed=True, layer=OUTLINE_PANES_LAYER, color=7)
-    for w in windows:
-        dwg.add_rect(w['x'], w['y'], w['w'], w['h'], layer=OUTLINE_PANES_LAYER, color=6)
+    for p in panes:
+        dwg.add_rect(p['x'], p['y'], p['w'], p['h'], layer=OUTLINE_PANES_LAYER, color=6)
     if entries:
         _insert_footprints(dwg, entries, variant_size, layer=OUTLINE_PANES_FOOTPRINT_LAYER,
-                          variant_leds=variant_leds)
+                          variant_leds=variant_leds, only_layers={'PINS'})
     if frame_rect is not None:
         for x, y, w, h in frame_side_hole_rects_mm(frame_rect):
             dwg.add_rect(x, y, w, h, layer=OUTLINE_FRAME_HOLES_LAYER, color=6)
 
 
-def export_outline_with_panes_dxf(outline: 'Outline', windows: list, out_path,
+def export_outline_with_panes_dxf(outline: 'Outline', panes: list, out_path,
                                   entries: list | None = None,
                                   variant_size: tuple | None = None,
                                   variant_leds: list | None = None,
                                   frame_rect: tuple | None = None) -> Path:
     """Schreibt EINE NEUE DXF-Datei mit dem Gebaeude-Umriss + allen
-    Fensteroeffnungen + (mit `entries`) den Footprint-Ausschnitten
+    Glasscheiben-Ausschnitten + (mit `entries`) den Zungen-Loechern
     ("Gebaeudekontur mit Fensterscheiben"). Ueberschreibt `out_path`
     komplett -- fuer eine bereits exportierte Datei stattdessen zu
     AKTUALISIEREN (statt zu ueberschreiben), siehe edit_outline_with_panes_dxf()."""
     dwg = DxfDrawing()
-    _draw_outline_with_panes(dwg, outline, windows, entries, variant_size, variant_leds, frame_rect)
+    _draw_outline_with_panes(dwg, outline, panes, entries, variant_size, variant_leds, frame_rect)
     return dwg.save(out_path)
 
 
-def edit_outline_with_panes_dxf(outline: 'Outline', windows: list, path,
+def edit_outline_with_panes_dxf(outline: 'Outline', panes: list, path,
                                 entries: list | None = None,
                                 variant_size: tuple | None = None,
                                 variant_leds: list | None = None,
                                 frame_rect: tuple | None = None) -> Path:
-    """Aktualisiert die Gebaeudekontur + Fensteroeffnungen + Footprint-
-    Ausschnitte in einer BEREITS exportierten DXF-Datei bei `path` (per
-    DxfDrawing.load() geoeffnet) -- ersetzt dazu nur die vorhandenen Entities
-    auf OUTLINE_PANES_LAYER und OUTLINE_PANES_FOOTPRINT_LAYER (siehe
-    _replace_layer_entities), laesst aber ALLES ANDERE in der Datei (z.B.
-    vom Nutzer manuell auf eigenen Layern ergaenzte Seitenteile/Verbinder)
-    unangetastet. Existiert `path` noch nicht, verhaelt sich das wie
-    export_outline_with_panes_dxf() (legt die Datei neu an)."""
+    """Aktualisiert die Gebaeudekontur + Glasscheiben-Ausschnitte + Zungen-
+    Loecher in einer BEREITS exportierten DXF-Datei bei `path` (per
+    DxfDrawing.load() geoeffnet) -- ersetzt dazu nur die vorhandenen
+    Entities auf OUTLINE_PANES_LAYER und OUTLINE_PANES_FOOTPRINT_LAYER
+    (siehe _replace_layer_entities), laesst aber ALLES ANDERE in der Datei
+    (z.B. vom Nutzer manuell auf eigenen Layern ergaenzte Seitenteile/
+    Verbinder) unangetastet. Existiert `path` noch nicht, verhaelt sich das
+    wie export_outline_with_panes_dxf() (legt die Datei neu an)."""
     path = Path(path)
     dwg = DxfDrawing.load(path) if path.is_file() else DxfDrawing()
     _replace_layer_entities(dwg, OUTLINE_PANES_LAYER)
     _replace_layer_entities(dwg, OUTLINE_PANES_FOOTPRINT_LAYER)
     _replace_layer_entities(dwg, OUTLINE_FRAME_HOLES_LAYER)
-    _draw_outline_with_panes(dwg, outline, windows, entries, variant_size, variant_leds, frame_rect)
+    _draw_outline_with_panes(dwg, outline, panes, entries, variant_size, variant_leds, frame_rect)
     return dwg.save(path)
 
 
@@ -597,13 +602,22 @@ def resolve_footprint_size(variant_size: tuple | None, leds: list) -> tuple:
     return FOOTPRINT_WIDTH, FOOTPRINT_HEIGHT
 
 
-def _footprint_scaled_points(width_mm: float, height_mm: float) -> list:
-    """Generiert die Footprint-Kontur (ein Rechteck) in der gegebenen
-    Groesse, auf (0, 0) normiert. footprintScale.get_footprint_points() gibt
-    dazu ein EIGENSTAENDIGES ezdxf-Dokument zurueck (nicht nur rohe Punkte)
-    -- die LWPOLYLINE-Punkte werden hier aus dessen modelspace() ausgelesen,
-    damit der Rest dieses Moduls (Anker/Uebersetzung, Y-Flip beim Zeichnen)
-    wie gewohnt mit reinen (x, y)-Punktlisten weiterarbeiten kann.
+def _footprint_scaled_points(width_mm: float, height_mm: float,
+                             only_layers: set | None = None) -> list:
+    """Generiert die Footprint-Kontur in der gegebenen Groesse, auf (0, 0)
+    normiert. footprintScale.get_footprint_points() gibt dazu ein
+    EIGENSTAENDIGES ezdxf-Dokument zurueck (nicht nur rohe Punkte) -- die
+    LWPOLYLINE-Punkte werden hier aus dessen modelspace() ausgelesen, damit
+    der Rest dieses Moduls (Anker/Uebersetzung, Y-Flip beim Zeichnen) wie
+    gewohnt mit reinen (x, y)-Punktlisten weiterarbeiten kann.
+
+    `only_layers` (z.B. `{'PINS'}`): WENN angegeben, werden NUR Polylinien
+    von genau diesen Layern uebernommen -- get_footprint_points() legt neben
+    den echten Zungen-Loechern (Layer 'PINS') auch eine reine Skizzenlinie
+    an (Layer 'SKETCH', width_mm x height_mm-Aussenmass, KEIN echter
+    Laserschnitt, nur eine Ausrichthilfe). Ohne `only_layers` (None) werden
+    ALLE Layer uebernommen (bisheriges Verhalten, siehe export_dxf, wo die
+    Skizzenlinie als Referenz erwuenscht bleibt).
 
     Y WIRD HIER GESPIEGELT (height_mm - y): footprintScale.py rechnet in
     PHYSISCHER Konvention (Y=0 = UNTERKANTE, wo die Bodenplatten-Zungen
@@ -617,7 +631,10 @@ def _footprint_scaled_points(width_mm: float, height_mm: float) -> list:
     Loecher bekam (siehe get_footprint_points)."""
     doc = footprintScale.get_footprint_points(width_mm, height_mm)
     msp = doc.modelspace()
-    return [[(pt[0], height_mm - pt[1]) for pt in e.get_points()] for e in msp.query('LWPOLYLINE')]
+    entities = msp.query('LWPOLYLINE')
+    if only_layers is not None:
+        entities = [e for e in entities if e.dxf.layer in only_layers]
+    return [[(pt[0], height_mm - pt[1]) for pt in e.get_points()] for e in entities]
 
 
 def _footprint_placement_transform(leds: list, width_mm: float, height_mm: float,
@@ -685,15 +702,20 @@ def collect_footprint_sizes(entries: list, variant_size: tuple | None = None) ->
 
 def _insert_footprints(dwg: 'DxfDrawing', entries: list,
                        variant_size: tuple | None = None, layer: str | None = None,
-                       variant_leds: list | None = None) -> None:
+                       variant_leds: list | None = None,
+                       only_layers: set | None = None) -> None:
     """Fuegt fuer JEDE Platzierung (gruppiert nach variantUuid) ihre
     Footprint-Kontur ein -- Groesse aufgeloest ueber resolve_footprint_size
     (Platzierungs-Override aus `leds[0]`, sonst der hier uebergebene
     `variant_size`, sonst FOOTPRINT_WIDTH/HEIGHT). Wird sowohl von
-    export_dxf() (LED-/Platinen-Datei, `layer=None` -- Default-Layer '0')
-    als auch von _draw_outline_with_panes() (Footprint-AUSSCHNITTE auf der
-    Fensterscheiben-Kontur, `layer=OUTLINE_PANES_FOOTPRINT_LAYER`) verwendet,
-    damit beide GENAU dieselben Footprint-Positionen zeichnen.
+    export_dxf() (LED-/Platinen-Datei, `layer=None` -- Default-Layer '0',
+    `only_layers=None` -- Skizzenlinie + Loecher, dient dort als sichtbare
+    Referenz) als auch von _draw_outline_with_panes() (Zungen-Loecher AUF
+    der Fensterscheiben-Kontur, `layer=OUTLINE_PANES_FOOTPRINT_LAYER`,
+    `only_layers={'PINS'}` -- NUR die echten Loecher/Ausschnitte, OHNE die
+    reine Skizzen-Aussenlinie, die dort kein echter Schnitt waere) verwendet,
+    damit beide GENAU dieselben Footprint-Positionen zeichnen. Siehe
+    `only_layers` bei _footprint_scaled_points fuer die Filterung selbst.
 
     `variant_leds` (die LED-Vorlage der Variante, x_mm/y_mm -- siehe
     _footprint_placement_transform) bestimmt den STARREN Anker relativ zu
@@ -713,7 +735,7 @@ def _insert_footprints(dwg: 'DxfDrawing', entries: list,
         leds_by_variant.setdefault(led.get('variantUuid'), []).append(led)
     for leds in leds_by_variant.values():
         width_mm, height_mm = resolve_footprint_size(variant_size, leds)
-        polylines = _footprint_scaled_points(width_mm, height_mm)
+        polylines = _footprint_scaled_points(width_mm, height_mm, only_layers=only_layers)
         if not polylines:
             continue
         transform = _footprint_placement_transform(leds, width_mm, height_mm, variant_leds)
