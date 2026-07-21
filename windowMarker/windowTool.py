@@ -41,7 +41,7 @@ except ImportError:
 
 from calcImages import (
     OPENAI_PROMPT, OPENAI_MODEL, GreenParams,
-    get_annotated, _extract_color_mask,
+    get_annotated, _extract_color_mask, _states_dir,
     prep_wall, flood_region, grow_rect_through_wall,
 )
 import pdfHouse
@@ -1248,9 +1248,12 @@ class App:
             green_wall = prep_wall(_extract_color_mask(annotated, False, p.green_thresh) > 0)
 
             # Rot-/Gruenbilder als eigene Dateien ablegen (wie extractWindows.py)
-            cv2.imwrite(str(path.with_name(path.stem + '._redmask.png')),
+            # -- im 'states'-Unterordner neben der Eingabedatei (siehe
+            # calcImages._states_dir), nicht direkt daneben.
+            states_dir = _states_dir(path)
+            cv2.imwrite(str(states_dir / (path.stem + '._redmask.png')),
                        (red_wall * 255).astype('uint8'))
-            cv2.imwrite(str(path.with_name(path.stem + '._greenmask.png')),
+            cv2.imwrite(str(states_dir / (path.stem + '._greenmask.png')),
                        (green_wall * 255).astype('uint8'))
 
             # Overlay-Linien (gelb: Fensterrahmen, blau: Glaskanten) als RGBA-Ebene
@@ -1432,7 +1435,7 @@ class App:
         self.img_orig     = im
         self.img_path     = path
         self.json_path    = path.with_suffix('.json')
-        self.svg_path     = path.with_suffix('.svg')
+        self.svg_path     = _states_dir(path) / (path.stem + '.svg')
         self.outline_polylines = outline_polylines
         self.wins         = []
         self.sel_idx      = -1
@@ -1504,7 +1507,7 @@ class App:
             if not p:
                 return
             self.json_path = Path(p)
-            self.svg_path = self.json_path.with_suffix('.svg')
+            self.svg_path = _states_dir(self.json_path) / (self.json_path.stem + '.svg')
 
         # Bestehendes JSON einlesen und nur 'name'/'windows' aktualisieren --
         # der LED-Batch-Editor (anderer Tab, teilt sich dieselbe Datei) schreibt
@@ -1567,14 +1570,15 @@ class App:
 
     def _save_panes_pdf(self):
         """Nur fuer PDF-Quellen (siehe pdfHouse.py): schreibt <name>.panes.pdf
-        neben dem Quell-PDF -- ein neues Zwei-Ebenen-PDF mit einer "Bild"-
-        Ebene (das Foto) und einer "Kontur+Scheiben"-Ebene (die importierte
-        Gebaeude-Kontur plus die markierten Glasscheiben-Rechtecke). Bei
-        JPG/PNG-Quellen passiert nichts (dort gibt es keine Kontur/kein
-        Ausgangs-PDF, dafuer bleibt die bisherige SVG-Ausgabe massgeblich)."""
+        in den 'states'-Unterordner neben dem Quell-PDF (siehe _states_dir)
+        -- ein neues Zwei-Ebenen-PDF mit einer "Bild"-Ebene (das Foto) und
+        einer "Kontur+Scheiben"-Ebene (die importierte Gebaeude-Kontur plus
+        die markierten Glasscheiben-Rechtecke). Bei JPG/PNG-Quellen passiert
+        nichts (dort gibt es keine Kontur/kein Ausgangs-PDF, dafuer bleibt
+        die bisherige SVG-Ausgabe massgeblich)."""
         if not self.img_orig or not self.img_path or self.img_path.suffix.lower() != '.pdf':
             return
-        out_path = self.img_path.with_name(self.img_path.stem + '.panes.pdf')
+        out_path = _states_dir(self.img_path) / (self.img_path.stem + '.panes.pdf')
         try:
             pdfHouse.save_marked_pdf(out_path, self.img_orig, self.outline_polylines, self._svg_rects())
         except Exception as ex:

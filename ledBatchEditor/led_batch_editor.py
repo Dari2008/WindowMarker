@@ -177,6 +177,20 @@ def unique_id(base: str, existing: set) -> str:
     return f'{base}-{n}'
 
 
+def _find_house_image_path(house_dir: Path, name: str) -> Path | None:
+    """Findet die eigentliche Bilddatei EINES Hauses (dieselbe Logik wie
+    App._scan_images): <name>.EXT mit EXT aus IMAGE_EXTS, direkt im
+    Hausordner, ohne die generierten Zwischendateien (siehe
+    EXCLUDE_MARKERS -- z.B. '._annotated.png'). None, wenn keine passt."""
+    if not house_dir.is_dir():
+        return None
+    for f in house_dir.iterdir():
+        if (f.stem == name and f.suffix.lower() in IMAGE_EXTS
+                and not any(m in f.name for m in EXCLUDE_MARKERS)):
+            return f
+    return None
+
+
 def load_variant() -> dict | None:
     """Es gibt bewusst nur EINE LED-Variante (keine Bibliothek mehrerer
     benannter PCB-Typen mehr) -- batch_variants.json haelt daher ein
@@ -1559,6 +1573,43 @@ class App:
                 px_per_mm = (house_data.get('dpi') or dxfExport.DEFAULT_DPI) / 25.4
                 outline = dxfExport.house_outline(house_dir / f'{name}.pdf', px_per_mm)
                 entries = dxfExport.get_placed_leds(house_data)
+
+                # Reines Foto in Farbe, OHNE jede Markierung (Fenster/LEDs/
+                # Kontur) -- nur das eingebettete Bild selbst (bei PDF-
+                # Quellen dessen "Bild"-Ebene, siehe pdfHouse.load_pdf_house,
+                # dieselbe Bildebene, die auch der Editor als Grundlage
+                # zeigt). Landet DIREKT NEBEN der Eingabedatei (house_dir),
+                # NICHT im exported-Unterordner -- rein informativ (kein
+                # Laserschnitt-Teil), daher auch nicht in der Stueckliste.
+                # Ein Fehlschlag hier (z.B. unlesbares Bild) soll auch nicht
+                # den restlichen Export dieses Hauses verhindern.
+                img_src_path = _find_house_image_path(house_dir, name)
+                if img_src_path is not None:
+                    try:
+                        if img_src_path.suffix.lower() == '.pdf' and pdfHouse is not None:
+                            photo, _outline_px = pdfHouse.load_pdf_house(img_src_path)
+                        else:
+                            photo = Image.open(img_src_path)
+                            photo.load()
+                        if photo.mode != 'RGB':
+                            photo = photo.convert('RGB')
+                        photo_path = house_dir / f'{name}_photo.png'
+                        photo.save(photo_path, 'PNG')
+                        written.append(photo_path)
+                    except Exception:
+                        pass
+
+                # house1.code.json (siehe App._build_code_json/_save -- direkt
+                # neben der Eingabedatei geschrieben, bei jedem Speichern
+                # aktuell gehalten) gehoert als Kopie MIT in den exported-
+                # Ordner, damit dieser fuer sich allein alles Noetige fuer den
+                # ESP32 enthaelt, ohne im Hausordner selbst suchen zu muessen.
+                code_json_path = house_dir / f'{name}.code.json'
+                if code_json_path.is_file():
+                    exported_dir.mkdir(parents=True, exist_ok=True)
+                    exported_code_json_path = exported_dir / f'{name}.code.json'
+                    exported_code_json_path.write_bytes(code_json_path.read_bytes())
+                    written.append(exported_code_json_path)
 
                 # Fuer das kombinierte Teile-Blatt gesammelt, waehrend die
                 # einzelnen Dateien weiter unten wie gewohnt geschrieben

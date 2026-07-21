@@ -596,7 +596,7 @@ function renderScenery() {
       });
 
       const img = document.createElement('img');
-      img.src = `/houses/${building.imageKey}/${building.imageKey}.jpg`;
+      img.src = `/houses/${building.imageKey}/${building.imageKey}_photo.png`;
       img.className = 'w-full h-auto block select-none pointer-events-none';
       img.addEventListener('load', () => {
         building.refW = img.naturalWidth;
@@ -609,7 +609,7 @@ function renderScenery() {
         img.style.display = 'none';
         const fallback = document.createElement('div');
         fallback.className = 'absolute inset-0 bg-slate-900 flex items-center justify-center text-center p-3 text-[11px] font-mono text-slate-500';
-        fallback.innerHTML = `<div>[${building.imageKey}.jpg]</div>`;
+        fallback.innerHTML = `<div>[${building.imageKey}_photo.png]</div>`;
         buildingContainer.appendChild(fallback);
       };
       buildingContainer.appendChild(img);
@@ -738,13 +738,13 @@ function renderSelectorGrid() {
     container.className = 'relative w-full aspect-[3/2] bg-slate-950 rounded-lg overflow-hidden border border-slate-800 shadow-inner flex items-center justify-center';
 
     const img = document.createElement('img');
-    img.src = `/houses/${key}/${key}.jpg`;
+    img.src = `/houses/${key}/${key}_photo.png`;
     img.className = 'w-full h-full object-cover opacity-80 pointer-events-none select-none';
     img.onerror = () => {
       img.style.display = 'none';
       const fallback = document.createElement('div');
       fallback.className = 'absolute inset-0 bg-slate-900 flex items-center justify-center text-center p-3 text-[11px] font-mono text-slate-500';
-      fallback.innerHTML = `<div>[${key}.jpg]</div>`;
+      fallback.innerHTML = `<div>[${key}_photo.png]</div>`;
       container.appendChild(fallback);
     };
     container.appendChild(img);

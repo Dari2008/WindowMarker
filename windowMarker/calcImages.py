@@ -320,8 +320,19 @@ def call_openai(bgr: np.ndarray, prompt: str, model: str = OPENAI_MODEL) -> np.n
     return annotated
 
 
+def _states_dir(img_path: Path) -> Path:
+    """Unterordner 'states' NEBEN der Eingabedatei -- Ablage fuer alle
+    generierten Zwischen-/Referenzdateien (KI-annotiertes Bild, Graustufen-/
+    Masken-Bilder, siehe save_intermediate/_cache_path), damit der Hausordner
+    selbst nur die eigentliche Eingabedatei + JSON enthaelt. Wird bei Bedarf
+    angelegt."""
+    d = img_path.resolve().parent / 'states'
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def _cache_path(img_path: Path) -> Path:
-    return img_path.with_name(img_path.stem + CACHE_SUFFIX)
+    return _states_dir(img_path) / (img_path.stem + CACHE_SUFFIX)
 
 
 # OpenAIs images.edit ist eine generative Bearbeitung, kein pixelgenauer Edit:
@@ -413,9 +424,10 @@ def redness_map(annotated: np.ndarray) -> np.ndarray:
 
 def save_intermediate(img_path: Path, annotated: np.ndarray,
                       green_thresh: int = GreenParams().green_thresh):
-    """Speichert alle Zwischenbilder neben dem Originalbild."""
+    """Speichert alle Zwischenbilder im 'states'-Unterordner neben dem
+    Originalbild (siehe _states_dir)."""
     stem   = img_path.stem
-    parent = img_path.resolve().parent
+    parent = _states_dir(img_path)
 
     def _write(path: Path, img: np.ndarray):
         ok = cv2.imwrite(str(path), img)
