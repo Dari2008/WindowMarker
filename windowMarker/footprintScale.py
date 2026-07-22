@@ -88,21 +88,48 @@ frame_strip_tongue_hole_positions(length_mm)
     Lokale (x, y, w, h)-Loecher, die die wiederkehrenden Laengskanten-Zungen
     einer Rahmenleiste dieser Laenge in die Hauskontur schneiden muessen.
 
-nest_parts_sheet(items, out_path, spacing_mm, max_row_width_mm)
+nest_parts_sheet(items, out_path, spacing_mm, material_size_mm)
     Baut aus `items` ({(ezdxf.Drawing, count)}-Paaren, beliebige Mischung
-    aus Footprint-/Bodenplatten-/Seitenteil-/Hauszeichnungs-Docs) EIN
-    einziges DXF: `count` Kopien je Eintrag, in Zeilen gepackt (neue Zeile
-    sobald SHEET_MAX_WIDTH_MM ueberschritten wuerde), PART_SPACING_MM (5mm)
-    Abstand in beide Richtungen -- ein ungefaehr rechteckiges, direkt an
-    den Laser schickbares Schnitt-Blatt statt einer einzigen langen Reihe.
-    Gedacht fuer EIN Blatt pro Haus (siehe led_batch_editor.py
-    App._export_project), mit Stueckzahlen direkt aus der Stueckliste
-    (csvExport.get_part_counts), damit CSV und Blatt nie auseinanderlaufen.
+    aus Footprint-/Bodenplatten-/Seitenteil-/Hauszeichnungs-Docs) EIN ODER
+    MEHRERE DXF-Blaetter: `count` Kopien je Eintrag, ueber die externe
+    Bibliothek `rectpack` (2D-Bin-Packing, probiert je Teil beide 90-Grad-
+    Ausrichtungen) so dicht wie moeglich zusammen genestet -- statt eines
+    selbstgeschriebenen Zeilen-/Regal-Algorithmus, der Luecken zwischen
+    unterschiedlich grossen Teilen liegen liess. PART_SPACING_MM (3mm)
+    Abstand in beide Richtungen. `material_size_mm` (width_mm, height_mm):
+    sobald die reale Materialplatte dieser Groesse voll waere, beginnt ein
+    NEUES Blatt (indizierter Dateiname) statt beliebig weiterzuwachsen; ohne
+    `material_size_mm` bekommt der Packer ein sehr grosses Blatt angeboten
+    und nutzt von sich aus nur so viel davon wie tatsaechlich noetig. Jedes
+    Blatt bekommt zusaetzlich einen Referenz-Rahmen (Layer 'SKETCH', kein
+    Schnitt) GENAU um die darauf platzierten Teile (nicht um die volle
+    Materialplatte), auf volle cm aufgerundet, dessen Groesse auch im
+    Dateinamen erscheint. Gedacht fuer EIN (oder bei Ueberlauf mehrere)
+    Blatt/Blaetter pro Haus (siehe led_batch_editor.py App._export_project),
+    mit Stueckzahlen direkt aus der Stueckliste (csvExport.get_part_counts),
+    damit CSV und Blatt/Blaetter nie auseinanderlaufen. Gibt eine LISTE
+    geschriebener Pfade zurueck.
 """
 
+import math
 from pathlib import Path
 
 import ezdxf
+import rectpack
+
+# Gemeinsame Layer-Namen fuer ALLE tatsaechlich zu schneidenden Konturen
+# (Aussenumriss, Zungen-/Presssitz-Loecher, Glasscheiben-/Rahmen-Ausschnitte
+# -- ueberall, in windowMarker/dxfExport.py UND hier) -- GENAU EIN Layer
+# fuer alles, was der Laser SCHNEIDET, damit ein Laser-Programm nicht
+# mehrere Cut-Layer einzeln aktivieren muss. GENAU EIN weiterer Layer fuer
+# alles, was nur GRAVIERT wird (z.B. die Platzierungs-Nummern, siehe
+# dxfExport._insert_placement_numbers/footprintScale.nest_parts_sheet) --
+# niemals derselbe Layer wie ein Schnitt, sonst wuerde eine Gravur-Linie
+# versehentlich mitgeschnitten. 'SKETCH' (siehe get_footprint_points) bleibt
+# ein DRITTER, eigener Layer -- das ist WEDER ein Schnitt NOCH eine Gravur,
+# sondern eine reine Ausrichthilfe, die beim Laser ignoriert wird.
+CUT_LAYER = 'CUT'
+ENGRAVE_LAYER = 'ENGRAVE'
 
 # Siehe Modul-Docstring -- ersetzt die frueheren, PRO FOOTPRINT-NAME in
 # einer <name>.json konfigurierbaren 'led_offset_top_mm'-Werte (es gibt
@@ -202,30 +229,121 @@ SLOT_END_MARGIN_MM = 5.7
 
 
 def _new_plate_doc():
-    """Legt ein neues ezdxf-Dokument (mm, siehe $INSUNITS) mit den Layern
-    OUTLINE/PINS an (ACI-Farbe 1 = Rot, explizit auf jeder Entity gesetzt,
-    nicht nur am Layer, damit die Kontur in JEDEM CAD-Viewer sofort sichtbar
-    ist) und gibt (doc, add_rect) zurueck -- add_rect(x, y, w, h, layer)
-    zeichnet ein Rechteck als LWPOLYLINE. Gemeinsamer Unterbau fuer
-    get_footprint_points/get_bottom_plate_points/get_side_plate_points."""
+    """Legt ein neues ezdxf-Dokument (mm, siehe $INSUNITS) mit dem
+    gemeinsamen Schnitt-Layer CUT_LAYER an (ACI-Farbe 1 = Rot, explizit auf
+    jeder Entity gesetzt, nicht nur am Layer, damit die Kontur in JEDEM
+    CAD-Viewer sofort sichtbar ist) und gibt (doc, add_rect) zurueck --
+    add_rect(x, y, w, h, layer, open_side=None) zeichnet ein Rechteck als
+    LWPOLYLINE. Gemeinsamer Unterbau fuer get_footprint_points/
+    get_bottom_plate_points/get_side_plate_points. Aussenkontur UND
+    Zungen-/Presssitz-Loecher landen ALLE auf CUT_LAYER (frueher getrennte
+    'OUTLINE'/'PINS'-Layer) -- ALLES, was tatsaechlich geschnitten wird,
+    soll auf EINEM einzigen Layer liegen, siehe Modul-Docstring.
+
+    `open_side` ('left'/'right'/'top'/'bottom'): WENN eine Kante dieses
+    Rechtecks exakt mit einer ANDEREN, bereits vorhandenen Kontur-Linie
+    zusammenfaellt (z.B. ein Zungen-Loch, das buendig an der Aussenkontur
+    liegt, siehe get_footprint_points) wuerde diese Kante sonst DOPPELT
+    gezeichnet/geschnitten -- `open_side` laesst genau diese eine Kante weg
+    (offene 3-seitige Linie statt geschlossenem Rechteck); die 4. Seite wird
+    dann von der JEWEILS ANDEREN Kontur mitgeschnitten."""
     doc = ezdxf.new('R2010')
     doc.header['$INSUNITS'] = 4   # 4 = Millimeter (siehe dxfExport.DxfDrawing.__init__)
     msp = doc.modelspace()
     RED = 1
-    for layer in ('OUTLINE', 'PINS'):
-        if layer not in doc.layers:
-            doc.layers.add(layer, color=RED)
+    if CUT_LAYER not in doc.layers:
+        doc.layers.add(CUT_LAYER, color=RED)
     # SKETCH: NICHT schneiden -- reine Konstruktions-/Referenzlinie (graues
     # ACI 8), fuer Konturen, die nur zur Ausrichtung markiert werden, aber
     # kein echter Laserschnitt sind (siehe get_footprint_points).
     if 'SKETCH' not in doc.layers:
         doc.layers.add('SKETCH', color=8)
 
-    def add_rect(x: float, y: float, w: float, h: float, layer: str) -> None:
-        pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
-        msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer, 'color': RED})
+    def add_rect(x: float, y: float, w: float, h: float, layer: str,
+                open_side: str | None = None) -> None:
+        if open_side is None:
+            pts = [(x, y), (x + w, y), (x + w, y + h), (x, y + h)]
+            msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer, 'color': RED})
+            return
+        # Reihenfolge je `open_side` so gewaehlt, dass die WEGGELASSENE
+        # Verbindung (erster Punkt <-> letzter Punkt, da close=False) genau
+        # die gewuenschte Kante ist.
+        order = {
+            'bottom': [(x, y), (x, y + h), (x + w, y + h), (x + w, y)],
+            'top':    [(x, y + h), (x, y), (x + w, y), (x + w, y + h)],
+            'left':   [(x, y), (x + w, y), (x + w, y + h), (x, y + h)],
+            'right':  [(x + w, y), (x, y), (x, y + h), (x + w, y + h)],
+        }[open_side]
+        msp.add_lwpolyline(order, close=False, dxfattribs={'layer': layer, 'color': RED})
 
     return doc, add_rect
+
+
+def _footprint_hole_layout(width_mm: float, height_mm: float) -> dict:
+    """Berechnet die Geometrie ALLER Zungen-Loecher von get_footprint_points
+    an EINER Stelle (statt sie dort inline zu wiederholen), damit
+    footprint_hole_anchors() (siehe dort -- Positionen fuer die
+    Platzierungs-Nummern-Gravur, siehe dxfExport._insert_placement_numbers)
+    GARANTIERT dieselben Positionen verwendet wie die echten Loch-Schnitte.
+    Gibt {'hole_w','hole_d','gap','slot_y','inner_left_x','inner_right_x'}
+    zurueck (alle in mm, PHYSISCHE Konvention wie get_footprint_points)."""
+    hole_w = TONGUE_WIDTH_MM - TONGUE_HOLE_UNDERSIZE_MM
+    hole_d = TONGUE_DEPTH_MM - TONGUE_HOLE_UNDERSIZE_MM
+    gap = (width_mm - TONGUE_WIDTH_MM * 2) / 2
+    tongue_center = TONGUE_DEPTH_MM + (height_mm - TONGUE_DEPTH_MM) / 2
+    slot_y = tongue_center - hole_w / 2
+    spacing = (width_mm - TONGUE_WIDTH_MM * 4) / 3
+    inner_left_x = 1 * (spacing + TONGUE_WIDTH_MM)
+    inner_right_x = 2 * (spacing + TONGUE_WIDTH_MM)
+    return {
+        'hole_w': hole_w, 'hole_d': hole_d, 'gap': gap, 'slot_y': slot_y,
+        'inner_left_x': inner_left_x, 'inner_right_x': inner_right_x,
+    }
+
+
+# Abstand (mm) zwischen der Unterkante eines Zungen-Lochs und der
+# Platzierungs-Nummer, die diesem Loch zugeordnet ist (siehe
+# footprint_hole_anchors) -- die Zahl steht also UNTERHALB des Lochs auf
+# echtem Material, NICHT zentriert IM Loch selbst (dort wuerde sie ins Leere
+# gravieren, da dort nach dem Schnitt kein Material mehr ist).
+FOOTPRINT_LABEL_MARGIN_MM = 3.0
+
+
+def footprint_hole_anchors(width_mm: float, height_mm: float) -> dict:
+    """Positionen (PHYSISCHE Konvention, Y=0=Unterkante -- wie
+    get_footprint_points) fuer die Platzierungs-Nummern-Gravur (siehe
+    dxfExport._insert_placement_numbers), je UNTERHALB (kleineres Y, naeher
+    an der Unterkante/dem Boden) der zugehoerigen Loch-Gruppe -- NICHT
+    zentriert IM Loch selbst (dort ist nach dem Laserschnitt kein Material
+    mehr, eine Gravur dort wuerde also ins Leere gehen bzw. gar nicht
+    erscheinen). FOOTPRINT_LABEL_MARGIN_MM Abstand von der jeweiligen
+    Loch-Unterkante. Geordnet nach dem TEIL, das durch die jeweilige
+    Loch-Gruppe hindurchgesteckt wird:
+      'bottom'       -- Bodenplatte (mittig zwischen den 2 Schlitzen an der
+                        Unterkante, siehe get_bottom_plate_points) --
+                        unterhalb dieser Schlitze liegt Y<0, also bereits
+                        ausserhalb der eigentlichen Footprint-Flaeche, auf
+                        der durchgehenden Hausfassade unter dem Fenster.
+      'outer_left'   -- AEUSSERES Seitenteil, linke Kante
+      'outer_right'  -- AEUSSERES Seitenteil, rechte Kante
+      'inner_left'   -- INNERES Seitenteil, weiter zur Mitte eingerueckt (links)
+      'inner_right'  -- INNERES Seitenteil, weiter zur Mitte eingerueckt (rechts)
+    JEDE Position liegt UNTERHALB ihres EIGENEN Lochs (gleiche X wie dessen
+    Mitte) -- KEIN gemeinsamer Mittelpunkt fuer die beiden inneren (das
+    stand naeher an keinem der beiden Loecher und war schwerer zuzuordnen);
+    stattdessen wie bei aussen zwei EIGENSTAENDIGE Positionen, je direkt
+    unter ihrem Loch.
+    (siehe get_side_plate_points fuer aussen/innen -- Kreuz-/Ueberblattungs-
+    Stoss, daher 4 statt 2 vertikale Loecher). Gibt {name: (x, y)} zurueck."""
+    g = _footprint_hole_layout(width_mm, height_mm)
+    m = FOOTPRINT_LABEL_MARGIN_MM
+    return {
+        'bottom': (width_mm / 2, -m),
+        'outer_left': (g['hole_d'] / 2, g['slot_y'] - m),
+        'outer_right': (width_mm - g['hole_d'] / 2, g['slot_y'] - m),
+        'inner_left': (g['inner_left_x'] + g['hole_d'] / 2, g['slot_y'] - m),
+        'inner_right': (g['inner_right_x'] + g['hole_d'] / 2, g['slot_y'] - m),
+    }
 
 
 def get_footprint_points(width_mm: float, height_mm: float) -> ezdxf.document.Drawing:
@@ -265,30 +383,41 @@ def get_footprint_points(width_mm: float, height_mm: float) -> ezdxf.document.Dr
     sketch = [(0.0, 0.0), (width_mm, 0.0), (width_mm, height_mm), (0.0, height_mm)]
     msp.add_lwpolyline(sketch, close=True, dxfattribs={'layer': 'SKETCH', 'color': 8})
 
-    hole_w = TONGUE_WIDTH_MM - TONGUE_HOLE_UNDERSIZE_MM
-    hole_d = TONGUE_DEPTH_MM - TONGUE_HOLE_UNDERSIZE_MM
+    g = _footprint_hole_layout(width_mm, height_mm)
+    hole_w, hole_d, gap = g['hole_w'], g['hole_d'], g['gap']
+    slot_y, inner_left_x, inner_right_x = g['slot_y'], g['inner_left_x'], g['inner_right_x']
 
     # 2 horizontale Schlitze, Unterkante (Y=0), gleiche X-Verteilung wie die
-    # Zungen der Bodenplatte (siehe dort).
-    gap = (width_mm - TONGUE_WIDTH_MM * 2) / 2
+    # Zungen der Bodenplatte (siehe dort). Ihre Y=0-Kante faellt zwar in
+    # DIESEM eigenstaendigen Dokument mit der SKETCH-Unterkante zusammen,
+    # ABER dieser Footprint wird spaeter unveraendert an eine BELIEBIGE
+    # Stelle der echten Hauskontur kopiert (siehe dxfExport._insert_footprints/
+    # _draw_outline_with_panes) -- dort liegt i.A. KEINE Kontur-Kante an
+    # dieser Position (ein Fenster sitzt normalerweise mitten in einer Wand,
+    # nicht buendig an deren Aussenkante). Ein hier weggelassener Rand
+    # (open_side) wuerde dort also zu einem UNVOLLSTAENDIG geschnittenen Loch
+    # fuehren (eine Seite bliebe offen/nicht durchtrennt) -- deshalb IMMER
+    # als geschlossenes Rechteck, kein open_side (anders als z.B. bei den
+    # Rahmenleisten-Loechern in dxfExport.frame_side_hole_rects_mm, die
+    # tatsaechlich GARANTIERT an der beschnittenen Aussenkontur liegen).
     for i in range(2):
         nominal_x = gap / 2 + i * (TONGUE_WIDTH_MM + gap)
         hole_x = nominal_x + (TONGUE_WIDTH_MM - hole_w) / 2
-        add_rect(hole_x, 0.0, hole_w, hole_d, 'PINS')
+        add_rect(hole_x, 0.0, hole_w, hole_d, CUT_LAYER)
 
     # 4 vertikale Schlitze -- MITTIG zwischen TONGUE_DEPTH_MM und height_mm
     # zentriert, exakt dieselbe Formel wie die Seitenteil-Zungenposition
     # (siehe get_side_plate_points' bx0/bx1), damit beide garantiert exakt
     # fluchten. 2 aussen (linke/rechte Kante, fuer die Aussen-Seitenteile) +
     # 2 innen (dieselbe spacing-Formel wie get_bottom_plate_points, fuer die
-    # Innen-Seitenteile).
-    tongue_center = TONGUE_DEPTH_MM + (height_mm - TONGUE_DEPTH_MM) / 2
-    slot_y = tongue_center - hole_w / 2
-    spacing = (width_mm - TONGUE_WIDTH_MM * 4) / 3
-    inner_left_x = 1 * (spacing + TONGUE_WIDTH_MM)
-    inner_right_x = 2 * (spacing + TONGUE_WIDTH_MM)
-    for slot_x in (0.0, inner_left_x, inner_right_x, width_mm - hole_d):
-        add_rect(slot_x, slot_y, hole_d, hole_w, 'PINS')
+    # Innen-Seitenteile). Alle VIER als normale geschlossene Rechtecke --
+    # aus demselben Grund wie oben (kein open_side): die AEUSSEREN beiden
+    # liegen zwar in DIESEM Dokument buendig an der linken/rechten
+    # SKETCH-Kante, aber nach dem Kopieren in die Hauskontur ist dort i.A.
+    # keine echte Kontur-Kante, an die sie anschliessen koennten.
+    vertical_slots = [0.0, inner_left_x, inner_right_x, width_mm - hole_d]
+    for slot_x in vertical_slots:
+        add_rect(slot_x, slot_y, hole_d, hole_w, CUT_LAYER)
 
     return doc
 
@@ -324,7 +453,7 @@ def get_bottom_plate_points(width_mm: float) -> ezdxf.document.Drawing:
     for x0 in tongue_x:
         outline += [(x0, 0.0), (x0, -td), (x0 + tw, -td), (x0 + tw, 0.0)]
     outline += [(width_mm, 0.0), (width_mm, plate_h), (0.0, plate_h)]
-    doc.modelspace().add_lwpolyline(outline, close=True, dxfattribs={'layer': 'OUTLINE', 'color': 1})
+    doc.modelspace().add_lwpolyline(outline, close=True, dxfattribs={'layer': CUT_LAYER, 'color': 1})
 
     # VIER Zungen-Loecher fuer die Seitenteil-Endzungen: 2 aussen (direkt am
     # Rand) + 2 innen (per Formel symmetrisch verteilt -- siehe
@@ -336,7 +465,7 @@ def get_bottom_plate_points(width_mm: float) -> ezdxf.document.Drawing:
     inner_left_x = 1 * (spacing + tw)
     inner_right_x = 2 * (spacing + tw)
     for hole_x in (0.0, inner_left_x, inner_right_x, width_mm - hole_w):
-        add_rect(hole_x, hole_y, hole_w, hole_h, 'PINS')
+        add_rect(hole_x, hole_y, hole_w, hole_h, CUT_LAYER)
 
     return doc
 
@@ -427,7 +556,7 @@ def get_side_plate_points(height_mm: float, inner: bool) -> ezdxf.document.Drawi
             (td, tm),
         ]
 
-    msp.add_lwpolyline(outline, close=True, dxfattribs={'layer': 'OUTLINE', 'color': 1})
+    msp.add_lwpolyline(outline, close=True, dxfattribs={'layer': CUT_LAYER, 'color': 1})
     return doc
 
 
@@ -540,7 +669,7 @@ def _get_frame_strip_points(length_mm: float, end_as_tongue: bool) -> ezdxf.docu
     start_x = -end_th if end_as_tongue else end_th
     outline += [(0.0, y_hi), (start_x, y_hi), (start_x, y_lo), (0.0, y_lo)]
 
-    doc.modelspace().add_lwpolyline(outline, close=True, dxfattribs={'layer': 'OUTLINE', 'color': 1})
+    doc.modelspace().add_lwpolyline(outline, close=True, dxfattribs={'layer': CUT_LAYER, 'color': 1})
     return doc
 
 
@@ -588,7 +717,7 @@ def get_frame_top_hole_points(length_mm: float) -> ezdxf.document.Drawing:
     hx = length_mm / 2 - hole_w / 2
     hy = FRAME_TOP_HOLE_MARGIN_MM
     pts = [(hx, hy), (hx + hole_w, hy), (hx + hole_w, hy + hole_h), (hx, hy + hole_h)]
-    doc.modelspace().add_lwpolyline(pts, close=True, dxfattribs={'layer': 'OUTLINE', 'color': 1})
+    doc.modelspace().add_lwpolyline(pts, close=True, dxfattribs={'layer': CUT_LAYER, 'color': 1})
     return doc
 
 
@@ -670,13 +799,67 @@ def export_all_footprints(sizes: dict, out_dir) -> list:
 # Abstand zwischen den Teilen auf dem kombinierten Schnitt-Blatt (siehe
 # nest_parts_sheet) -- wie der Luftspalt, den ein Laser zwischen zwei
 # nebeneinanderliegenden Teilen braucht, damit sie sich nicht beruehren.
-PART_SPACING_MM = 5.0
+PART_SPACING_MM = 3.0
 
-# Ziel-Breite des Schnitt-Blatts (siehe nest_parts_sheet) -- sobald eine
-# Zeile diese Breite ueberschreiten wuerde, beginnt eine NEUE Zeile darunter,
-# damit das Ergebnis ein ungefaehr RECHTECKIGES Blatt ist statt einer
-# einzigen, beliebig langen Reihe.
-SHEET_MAX_WIDTH_MM = 600.0
+# Schrittweite, um die die probeweise angebotene quadratische Blattgroesse
+# vergroessert wird, wenn noch nicht alle Teile hineinpassen (siehe
+# _pack_compact) -- 1cm auf JEDE Seite (Breite UND Hoehe), das Blatt bleibt
+# dabei immer ein Quadrat.
+_SQUARE_GROW_STEP_MM = 10.0
+
+
+def _pack_compact(pieces: list, spacing_mm: float, material_size_mm: tuple | None = None):
+    """Packt `pieces` (siehe nest_parts_sheet, je {'orig_w','orig_h',...}) --
+    probiert zuerst ein QUADRATISCHES Blatt mit Seitenlaenge = Quadratwurzel
+    der GESAMTEN Teile-Flaeche (mindestens aber so gross wie das breiteste
+    bzw. hoechste einzelne Teil, sonst wuerde selbst DAS nicht hineinpassen).
+    Passt noch nicht alles hinein, wird JEDE Seite des Quadrats um
+    _SQUARE_GROW_STEP_MM (1cm) vergroessert und erneut versucht -- so lange,
+    bis entweder alle Teile Platz finden ODER (wenn `material_size_mm`
+    angegeben ist) beide Seiten deren Grenze erreicht haben.
+
+    `material_size_mm` ((max_width_mm, max_height_mm)): WENN angegeben, wird
+    JEDE Seite des wachsenden Quadrats einzeln bei der jeweiligen
+    Material-Grenze GEKAPPT (das Blatt darf NIE breiter als max_width_mm
+    oder hoeher als max_height_mm werden) -- eine Seite kann also schon am
+    Anschlag sein, waehrend die andere noch weiterwaechst (bis AUCH sie an
+    ihre Grenze stoesst), damit die volle Materialflaeche genutzt wird,
+    statt bei einem (ggf. viel kleineren) Quadrat aus der kleineren
+    Material-Dimension stehenzubleiben. Passt selbst bei voll ausgereizter
+    Materialgroesse noch nicht alles hinein, wird die (dann unvollstaendige)
+    Packung trotzdem zurueckgegeben -- der Aufrufer erkennt ueber die NICHT
+    in irgendeinem Bin vorkommenden `rid`s, welche Teile noch auf ein
+    WEITERES Blatt muessen (siehe nest_parts_sheet, wo genau diese Funktion
+    dafuer erneut mit den uebrig gebliebenen Teilen aufgerufen wird).
+
+    Gibt den `rectpack.Packer` zurueck (immer GENAU 1 Blatt)."""
+    if not pieces:
+        packer = rectpack.newPacker(rotation=True)
+        packer.add_bin(1.0, 1.0, count=1)
+        packer.pack()
+        return packer
+
+    total_area = sum((p['orig_w'] + spacing_mm) * (p['orig_h'] + spacing_mm) for p in pieces)
+    biggest_w = max(p['orig_w'] for p in pieces) + spacing_mm
+    biggest_h = max(p['orig_h'] for p in pieces) + spacing_mm
+    side = max(math.sqrt(total_area), biggest_w, biggest_h)
+    max_w, max_h = material_size_mm if material_size_mm is not None else (None, None)
+
+    while True:
+        bin_w = min(side, max_w) if max_w is not None else side
+        bin_h = min(side, max_h) if max_h is not None else side
+        packer = rectpack.newPacker(rotation=True)
+        for i, p in enumerate(pieces):
+            packer.add_rect(p['orig_w'] + spacing_mm, p['orig_h'] + spacing_mm, rid=i)
+        packer.add_bin(bin_w, bin_h, count=1)
+        packer.pack()
+        if sum(len(b) for b in packer) >= len(pieces):
+            return packer
+        maxed_out = (max_w is not None and bin_w >= max_w - 1e-9
+                    and max_h is not None and bin_h >= max_h - 1e-9)
+        if maxed_out:
+            return packer
+        side += _SQUARE_GROW_STEP_MM
 
 
 def _doc_bbox(doc: ezdxf.document.Drawing) -> tuple:
@@ -687,57 +870,244 @@ def _doc_bbox(doc: ezdxf.document.Drawing) -> tuple:
     return min(xs), min(ys), max(xs), max(ys)
 
 
-def nest_parts_sheet(items: list, out_path, spacing_mm: float = PART_SPACING_MM,
-                     max_row_width_mm: float = SHEET_MAX_WIDTH_MM) -> Path:
-    """Baut EIN einzelnes DXF, das `items` -- eine Liste von
-    (ezdxf.Drawing, count)-Paaren, z.B. [(get_bottom_plate_points(75), 3),
-    (get_side_plate_points(40, inner=False), 6), ...] -- als `count` Kopien
-    JE Eintrag nebeneinander/untereinander vereint. ZEILEN-Packung (Shelf
-    Packing): Teile werden von links nach rechts angeordnet, sobald die
-    naechste Kopie SHEET_MAX_WIDTH_MM ueberschreiten wuerde, beginnt eine
-    neue Zeile darunter -- Ergebnis ist ein ungefaehr RECHTECKIGES Blatt
-    statt einer einzigen langen Reihe. PART_SPACING_MM (5mm) Abstand
-    zwischen allen Teilen, in beiden Richtungen.
-
-    Jede (Doc, count)-Gruppe wird VOLLSTAENDIG abgearbeitet, bevor die
-    naechste beginnt -- die Reihenfolge in `items` bestimmt also, in
-    welcher Gruppierung die Teile auf dem Blatt erscheinen (z.B. alle
-    Bodenplatten, dann alle Footprints, dann alle Seitenteile, dann die
-    Hauszeichnung -- siehe led_batch_editor.App._export_project fuer die
-    tatsaechliche Reihenfolge/Herkunft der Stueckzahlen, die 1:1 aus der
-    Stueckliste stammen, siehe csvExport.get_part_counts).
-
-    Schreibt EINE Datei nach `out_path` (Elternordner wird bei Bedarf
-    angelegt) und gibt den Path zurueck."""
+def _new_sheet_doc() -> ezdxf.document.Drawing:
     doc = ezdxf.new('R2010')
     doc.header['$INSUNITS'] = 4
-    msp = doc.modelspace()
-    for layer, color in (('OUTLINE', 1), ('PINS', 1), ('SKETCH', 8)):
+    for layer, color in ((CUT_LAYER, 1), ('SKETCH', 8), (ENGRAVE_LAYER, 3)):
         if layer not in doc.layers:
             doc.layers.add(layer, color=color)
+    return doc
 
-    cursor_x = 0.0
-    cursor_y = 0.0
-    row_height = 0.0
 
-    for part_doc, count in items:
+def nest_parts_sheet(items: list, out_path, spacing_mm: float = PART_SPACING_MM,
+                     material_size_mm: tuple | None = None) -> list:
+    """Baut `items` -- eine Liste von (ezdxf.Drawing, count)- ODER
+    (ezdxf.Drawing, count, labels)-Tupeln, z.B. [(get_bottom_plate_points(75), 3),
+    (get_side_plate_points(40, inner=False), 6, ['2','2','5','5','7','7']), ...]
+    -- als `count` Kopien JE Eintrag zu EINEM ODER MEHREREN Schnitt-Blaettern
+    genestet. ALLE Kopien aus ALLEN Gruppen werden zu einzelnen Teilen
+    aufgeloest und GEMEINSAM ueber die externe Bibliothek `rectpack`
+    (2D-Bin-Packing, MaxRects-Algorithmus mit Best-Short-Side-Fit)
+    verschachtelt -- KEIN selbstgeschriebener Zeilen-/Regal-Algorithmus mehr
+    (der liess bei unterschiedlich grossen Teilen immer Luecken zwischen den
+    Zeilen/Regalen liegen, egal wie ausgekluegelt die Zeilen-Aufteilung war):
+    `rectpack` probiert bei JEDEM einzelnen Teil BEIDE 90-Grad-Ausrichtungen
+    und kann Teile unterschiedlicher Groesse frei umeinander/ineinander
+    verschachteln, statt sie in horizontale Zeilen zu zwaengen -- deutlich
+    dichter, besonders bei einer Mischung aus grossen und kleinen Teilen.
+    PART_SPACING_MM (3mm) Abstand zwischen allen Teilen, in beiden
+    Richtungen (als Polster auf jedes angefragte Rechteck aufgeschlagen,
+    siehe Quellcode).
+
+    `labels` (optional, 3. Tupel-Element): eine Liste mit GENAU `count`
+    Eintraegen (oder None je Kopie fuer 'keine Gravur an dieser Kopie') --
+    JEDE einzelne platzierte Kopie bekommt ihr eigenes Label mittig auf sich
+    graviert (ENGRAVE_LAYER, NIE der Schnitt-Layer). Gedacht fuer die
+    Platzierungs-Nummer (siehe led_batch_editor.App._export_project /
+    dxfExport._insert_placement_numbers) -- so tragen z.B. die zwei
+    Seitenteile-Kopien EINER Platzierung dieselbe Nummer wie deren
+    Bodenplatte UND wie die Hauszeichnung an dieser Fensterposition, auch
+    wenn mehrere Platzierungen sich dieselbe (width_mm, height_mm)-Gruppe
+    und damit denselben `items`-Eintrag teilen. Ohne `labels` (2-Tupel oder
+    None) bleiben die Kopien ungraviert, wie bisher.
+
+    `material_size_mm` ((width_mm, height_mm), z.B. die tatsaechliche
+    Rohmaterial-Plattengroesse des Lasers): WENN angegeben, wird GENAU diese
+    Groesse als (wiederholt verfuegbares) Blatt an `rectpack` uebergeben --
+    reicht ein Blatt nicht fuer alle Teile, erzeugt `rectpack` selbststaendig
+    weitere (indizierter Dateiname); das Seitenverhaeltnis eines echten
+    Materialblatts ist bereits vom Nutzer vorgegeben, daran wird nichts
+    optimiert. OHNE `material_size_mm` (siehe _pack_compact): startet mit
+    einem QUADRATISCHEN Blatt (Seitenlaenge = Quadratwurzel der GESAMTEN
+    Teile-Flaeche, mindestens aber so gross wie das breiteste/hoechste
+    einzelne Teil) und vergroessert JEDE Seite um 1cm, so lange bis alle
+    Teile hineinpassen -- bleibt dabei IMMER ein Quadrat statt zu einem
+    beliebig lang gestreckten Streifen zu werden.
+
+    Jedes fertige Blatt bekommt zusaetzlich EINEN Rahmen (Layer 'SKETCH',
+    KEIN echter Schnitt, nur Referenz/Uebersicht) -- IMMER GENAU um die
+    MIN/MAX-Position der TATSAECHLICH darauf platzierten Teile (Bounding-Box
+    ueber deren Layer CUT_LAYER, NICHT um die volle `material_size_mm`-
+    Rohplatte, selbst wenn eine angegeben wurde -- die sagt nichts darueber
+    aus, wie viel davon am Ende wirklich gebraucht wird): Breite und Hoehe
+    UNABHAENGIG voneinander auf den naechsten vollen Zentimeter aufgerundet
+    (KEIN erzwungenes Quadrat -- die Teile packen sich oft in ein
+    laengliches statt quadratisches Gesamt-Rechteck). Dessen Groesse
+    erscheint 1:1 im Dateinamen (z.B. 'name_60x45cm.dxf') -- Rahmen und
+    Dateiname stimmen also IMMER exakt ueberein.
+
+    Uebernimmt beim Kopieren jeder Quell-Entity deren EIGENEN closed/offen-
+    Zustand (siehe _new_plate_doc's `open_side`/dxfExport's `closed`-
+    Weitergabe) -- NICHT pauschal `close=True`, sonst wuerden absichtlich
+    offene Konturen (z.B. Loecher, die buendig an einer Aussenkontur liegen)
+    auf dem kombinierten Blatt wieder eine doppelt geschnittene Linie
+    bekommen.
+
+    Schreibt EINE Datei nach `out_path` (mit angehaengter Groessen-Angabe),
+    wenn alles auf ein Blatt passt -- bei MEHREREN Blaettern (Ueberlauf)
+    wird jedem Dateinamen zusaetzlich sein Blatt-Index VORANGESTELLT
+    (1-basiert, z.B. 'name.dxf' -> '1_name_60x60cm.dxf'/'2_name_45x60cm.dxf'),
+    damit die Reihenfolge der Blaetter aus dem Dateinamen selbst hervorgeht.
+    Elternordner wird bei Bedarf angelegt. Gibt die Liste der geschriebenen
+    Pfade zurueck (ein Eintrag ohne Ueberlauf)."""
+    # 1) Alle Kopien aus allen Gruppen zu EINZELNEN Teilen aufloesen.
+    pieces: list = []
+    for entry in items:
+        part_doc, count = entry[0], entry[1]
+        labels = entry[2] if len(entry) > 2 else None
         if count <= 0:
             continue
         min_x, min_y, max_x, max_y = _doc_bbox(part_doc)
-        part_w, part_h = max_x - min_x, max_y - min_y
+        orig_w, orig_h = max_x - min_x, max_y - min_y
         entities = list(part_doc.modelspace().query('LWPOLYLINE'))
-        for _ in range(count):
-            if cursor_x > 0.0 and cursor_x + part_w > max_row_width_mm:
-                cursor_x = 0.0
-                cursor_y += row_height + spacing_mm
-                row_height = 0.0
-            for e in entities:
-                pts = [(p[0] - min_x + cursor_x, p[1] - min_y + cursor_y) for p in e.get_points()]
-                msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': e.dxf.layer, 'color': e.dxf.color})
-            cursor_x += part_w + spacing_mm
-            row_height = max(row_height, part_h)
+        # TEXT-Entities (z.B. die Platzierungs-Nummern, siehe dxfExport.
+        # _insert_placement_numbers) MUESSEN separat mitkopiert werden --
+        # eine reine LWPOLYLINE-Query erfasst sie nicht, sie wuerden sonst
+        # beim Einfuegen in dieses kombinierte Blatt stillschweigend
+        # wegfallen (z.B. wenn eine bereits exportierte outline_with_panes.dxf
+        # / outline.dxf hier per ezdxf.readfile() als `part_doc` mit
+        # eingebracht wird, siehe led_batch_editor.App._export_project).
+        texts = list(part_doc.modelspace().query('TEXT'))
+        for i in range(count):
+            pieces.append({
+                'entities': entities, 'texts': texts, 'min_x': min_x, 'min_y': min_y,
+                'orig_w': orig_w, 'orig_h': orig_h,
+                'label': labels[i] if labels else None,
+            })
 
+    # 2) Packung ueber die externe Bibliothek `rectpack` (2D-Bin-Packing,
+    # MaxRects-Algorithmus mit Best-Short-Side-Fit -- deutlich dichter als
+    # ein selbstgeschriebener Algorithmus, probiert bei JEDEM Teil BEIDE
+    # Ausrichtungen (rotation=True) UND kann Teile unterschiedlicher Groesse
+    # frei ineinander verschachteln statt sie in Regalen/Zeilen zu
+    # stapeln). `spacing_mm` wird als Polster auf Breite UND Hoehe JEDES
+    # angefragten Rechtecks aufgeschlagen (nicht auf das gezeichnete Teil
+    # selbst) -- beruehren sich zwei gepolsterte Rechtecke Kante an Kante,
+    # betraegt der Abstand zwischen den TATSAECHLICHEN (ungepolsterten)
+    # Teilen darin genau `spacing_mm`.
+    #
+    # IMMER ueber _pack_compact (siehe dort) -- die quadratisch wachsende
+    # Kompakt-Packung wird UNVERAENDERT auch mit `material_size_mm` benutzt
+    # (nicht durch die reine Materialrechteck-Packung ERSETZT), NUR dass
+    # dabei jede Seite an der jeweiligen Material-Grenze gekappt wird -- das
+    # Ergebnis wird also NIE groesser als die angegebene Materialplatte.
+    # Passt selbst die volle Materialflaeche nicht fuer ALLE Teile auf
+    # einmal, wird der Rest (die auf diesem Blatt nicht untergebrachten
+    # `rid`s) im naechsten Durchlauf erneut an _pack_compact gegeben --
+    # jedes weitere Blatt startet also wieder klein/quadratisch und waechst
+    # nur so weit wie fuer DIESEN (kleineren) Rest noetig, statt sofort
+    # wieder die volle Materialgroesse zu benutzen.
+    sheets: list = []
+    placed_rids: set = set()
+    remaining = list(range(len(pieces)))
+    while remaining:
+        subset = [pieces[i] for i in remaining]
+        packer = _pack_compact(subset, spacing_mm, material_size_mm)
+        newly_placed_local: set = set()
+        for abin in packer:
+            sheet = _new_sheet_doc()
+            sheets.append(sheet)
+            msp = sheet.modelspace()
+            for r in abin:
+                newly_placed_local.add(r.rid)
+                global_idx = remaining[r.rid]
+                placed_rids.add(global_idx)
+                p = pieces[global_idx]
+                # Gedreht, wenn die zurueckgegebene (gepolsterte) Breite zur
+                # HOEHE (statt Breite) des Original-Teils plus Polster passt
+                # -- Toleranz gegen Gleitkomma-Rundung beim Rein-/Rauspolstern.
+                rotated = abs((r.width - spacing_mm) - p['orig_h']) < 1e-6
+                cw, ch = (p['orig_h'], p['orig_w']) if rotated else (p['orig_w'], p['orig_h'])
+                cx, cy = r.x, r.y
+                for e in p['entities']:
+                    pts = [(pt[0] - p['min_x'], pt[1] - p['min_y']) for pt in e.get_points()]
+                    if rotated:
+                        # 90 Grad CCW um den Ursprung, dann um orig_h nach
+                        # rechts verschoben, damit das Ergebnis wieder bei
+                        # (0,0) beginnt (bildet die (0,0)-(orig_w,orig_h)-
+                        # Bounding-Box auf (0,0)-(orig_h,orig_w) ab).
+                        pts = [(p['orig_h'] - y, x) for x, y in pts]
+                    pts = [(x + cx, y + cy) for x, y in pts]
+                    msp.add_lwpolyline(pts, close=e.closed, dxfattribs={'layer': e.dxf.layer, 'color': e.dxf.color})
+                for t in p['texts']:
+                    tx, ty = t.dxf.insert.x - p['min_x'], t.dxf.insert.y - p['min_y']
+                    rotation = t.dxf.rotation
+                    if rotated:
+                        tx, ty = p['orig_h'] - ty, tx
+                        rotation += 90
+                    tx, ty = tx + cx, ty + cy
+                    new_text = msp.add_text(t.dxf.text, dxfattribs={
+                        'layer': t.dxf.layer, 'height': t.dxf.height, 'color': t.dxf.color,
+                        'rotation': rotation,
+                    })
+                    new_text.set_placement((tx, ty), align=ezdxf.enums.TextEntityAlignment.MIDDLE_CENTER)
+                if p['label'] is not None:
+                    label_h = max(2.0, min(cw, ch) * 0.3)
+                    text = msp.add_text(str(p['label']), dxfattribs={'layer': ENGRAVE_LAYER, 'height': label_h, 'color': 3})
+                    text.set_placement((cx + cw / 2, cy + ch / 2), align=ezdxf.enums.TextEntityAlignment.MIDDLE_CENTER)
+        if not newly_placed_local:
+            # Kein einziges Teil hat auf einem frischen Blatt Platz gefunden
+            # (nur moeglich mit `material_size_mm`, wenn ein Teil in JEDER
+            # Ausrichtung groesser als die Materialplatte ist) -- Rest bleibt
+            # fuer den Ueberlauf-Fallback unten stehen, keine Endlosschleife.
+            break
+        remaining = [i for i in remaining if i not in placed_rids]
+
+    # Teile, die selbst allein auf keinem Blatt Platz gefunden haben (nur
+    # moeglich mit `material_size_mm`, wenn ein Teil in JEDER Ausrichtung
+    # groesser als die Materialplatte ist) -- unvermeidbarer Ueberlauf,
+    # bekommen je ein eigenes zusaetzliches Blatt statt den Export
+    # abzubrechen.
+    for i, p in enumerate(pieces):
+        if i in placed_rids:
+            continue
+        sheet = _new_sheet_doc()
+        sheets.append(sheet)
+        msp = sheet.modelspace()
+        for e in p['entities']:
+            pts = [(pt[0] - p['min_x'], pt[1] - p['min_y']) for pt in e.get_points()]
+            msp.add_lwpolyline(pts, close=e.closed, dxfattribs={'layer': e.dxf.layer, 'color': e.dxf.color})
+        if p['label'] is not None:
+            label_h = max(2.0, min(p['orig_w'], p['orig_h']) * 0.3)
+            text = msp.add_text(str(p['label']), dxfattribs={'layer': ENGRAVE_LAYER, 'height': label_h, 'color': 3})
+            text.set_placement((p['orig_w'] / 2, p['orig_h'] / 2), align=ezdxf.enums.TextEntityAlignment.MIDDLE_CENTER)
+
+    # 3) Rahmen (Layer 'SKETCH', kein Schnitt) um jedes fertige Blatt -- IMMER
+    # GENAU um die MIN/MAX-Position der TATSAECHLICH platzierten Teile
+    # (Layer CUT_LAYER), NICHT um die ganze `material_size_mm`-Rohplatte,
+    # selbst wenn eine angegeben wurde (die begrenzt nur, WOHIN genestet
+    # werden darf, sagt aber nichts darueber aus, wie viel davon am Ende
+    # wirklich gebraucht wird) -- Breite und Hoehe UNABHAENGIG voneinander
+    # auf volle cm aufgerundet (KEIN erzwungenes Quadrat: die Teile packen
+    # sich oft in ein laengliches statt quadratisches Gesamt-Rechteck, ein
+    # Rahmen, der das dann trotzdem zu einem Quadrat aufblaehen wuerde,
+    # waere selbst genau die unnoetig grosse Flaeche, die vermieden werden
+    # soll). UND dieselbe Groesse im Dateinamen (siehe Docstring).
     out_path = Path(out_path)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    doc.saveas(str(out_path))
-    return out_path
+    multi = len(sheets) > 1
+    written = []
+    for i, sheet in enumerate(sheets, start=1):
+        cut_polylines = [e for e in sheet.modelspace().query('LWPOLYLINE') if e.dxf.layer == CUT_LAYER]
+        if cut_polylines:
+            xs = [pt[0] for e in cut_polylines for pt in e.get_points()]
+            ys = [pt[1] for e in cut_polylines for pt in e.get_points()]
+            min_x, max_x = min(xs), max(xs)
+            min_y, max_y = min(ys), max(ys)
+            frame_w = math.ceil((max_x - min_x) / 10.0) * 10.0
+            frame_h = math.ceil((max_y - min_y) / 10.0) * 10.0
+        else:
+            min_x = min_y = 0.0
+            frame_w = frame_h = 0.0
+        sheet.modelspace().add_lwpolyline(
+            [(min_x, min_y), (min_x + frame_w, min_y), (min_x + frame_w, min_y + frame_h), (min_x, min_y + frame_h)],
+            close=True, dxfattribs={'layer': 'SKETCH', 'color': 8})
+
+        size_suffix = f'{frame_w / 10:g}x{frame_h / 10:g}cm'
+        name = f'{out_path.stem}_{size_suffix}{out_path.suffix}'
+        if multi:
+            name = f'{i}_{name}'
+        sheet_path = out_path.with_name(name)
+        sheet.saveas(str(sheet_path))
+        written.append(sheet_path)
+    return written

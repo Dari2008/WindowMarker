@@ -6,3 +6,4 @@ openai>=1.0
 tkinterdnd2>=0.3   # optional: Drag & Drop in windowMarker.py
 pymupdf>=1.24      # pdfHouse.py: Zwei-Ebenen-Haus-PDFs lesen/schreiben (siehe overview.md)
 ezdxf>=1.3         # dxfExport.py: LED-Fenster als DXF-Zeichnung exportieren
+rectpack>=0.2      # footprintScale.nest_parts_sheet: 2D-Bin-Packing fuers kombinierte Teile-Blatt

@@ -58,6 +58,12 @@ HOUSES_DIR    = PUBLIC_DIR / 'houses'
 # spezifische Dateien enthalten (siehe images.json-Autosync); die
 # bildübergreifende PCB-Varianten-Bibliothek gehoert eine Ebene hoeher.
 VARIANTS_PATH = PUBLIC_DIR / 'batch_variants.json'
+# Persistiert die zuletzt im Toolbar-Feld "Material B x H (mm)" eingetragene
+# Groesse (siehe _build/_export_project) -- ohne diese Datei wuerden die
+# Felder bei jedem Neustart auf ihren hartcodierten Default (600x400)
+# zurueckfallen, obwohl der Nutzer i.A. immer dieselbe reale Materialplatte
+# verwendet.
+MATERIAL_SIZE_PATH = PUBLIC_DIR / 'material_size.json'
 
 IMAGE_EXTS = {'.jpg', '.jpeg', '.png', '.webp', '.bmp', '.pdf'}
 EXCLUDE_MARKERS = ('._annotated', '._greenness', '._greenmask', '._redness', '._redmask', '.panes.pdf')
@@ -208,6 +214,27 @@ def save_variant(variant: dict | None):
     VARIANTS_PATH.parent.mkdir(parents=True, exist_ok=True)
     VARIANTS_PATH.write_text(
         json.dumps({'variant': variant}, indent=2, ensure_ascii=False), encoding='utf-8')
+
+
+def load_material_size() -> tuple | None:
+    """Zuletzt gespeicherte (width_mm, height_mm) aus dem Toolbar-Feld
+    "Material B×H (mm)" (siehe save_material_size/_export_project) -- None,
+    wenn noch nie gespeichert (dann bleiben die hartcodierten '600'/'400'-
+    Feld-Defaults aus _build stehen)."""
+    if MATERIAL_SIZE_PATH.exists():
+        try:
+            data = json.loads(MATERIAL_SIZE_PATH.read_text(encoding='utf-8'))
+            return data.get('width_mm'), data.get('height_mm')
+        except Exception:
+            return None
+    return None
+
+
+def save_material_size(width_mm: float, height_mm: float):
+    MATERIAL_SIZE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MATERIAL_SIZE_PATH.write_text(
+        json.dumps({'width_mm': width_mm, 'height_mm': height_mm}, indent=2, ensure_ascii=False),
+        encoding='utf-8')
 
 
 def variant_bbox(variant: dict):
@@ -1181,6 +1208,58 @@ class App:
         # damit DXF und CSV nie aus unterschiedlichen Projektstaenden stammen.
         ttk.Button(tb, text='Projekt exportieren',
                   command=self._export_project, takefocus=0).pack(side='right', padx=2, pady=6)
+
+        # Materialgroesse fuer das kombinierte Teile-Blatt (siehe
+        # footprintScale.nest_parts_sheet's material_size_mm) -- bei
+        # Ueberlauf (die genestete Flaeche wuerde diese Groesse sprengen)
+        # entstehen mehrere durchnummerierte Blaetter ('1_...', '2_...')
+        # statt eines beliebig hoch weiterwachsenden einzelnen. Leer/
+        # ungueltig = kein Limit (altes Verhalten, siehe _export_project).
+        # Packreihenfolge bewusst RUECKWAERTS zur Leserichtung: side='right'
+        # stapelt vom rechten Rand nach links, das zuletzt gepackte
+        # Widget landet also am weitesten links. Vorbelegt aus
+        # load_material_size() (siehe dort/save_material_size in
+        # _export_project) -- damit die zuletzt benutzte Materialgroesse
+        # nicht bei jedem Neustart auf den hartcodierten 600x400-Default
+        # zurueckfaellt, faellt aber genau darauf zurueck, wenn noch nie
+        # gespeichert wurde.
+        saved_material_size = load_material_size()
+        saved_w = saved_material_size[0] if saved_material_size else None
+        saved_h = saved_material_size[1] if saved_material_size else None
+        self.v_material_h = tk.StringVar(value=f'{saved_h:g}' if saved_h else '400')
+        ent_mat_h = tk.Entry(tb, textvariable=self.v_material_h, bg=C['bg_panel'], fg=C['text'],
+                             insertbackground='white', relief='flat', width=5)
+        ent_mat_h.pack(side='right', padx=(0, 8), pady=8)
+        tk.Label(tb, text='×', bg=C['bg_dark'], fg=C['muted']).pack(side='right')
+        self.v_material_w = tk.StringVar(value=f'{saved_w:g}' if saved_w else '600')
+        ent_mat_w = tk.Entry(tb, textvariable=self.v_material_w, bg=C['bg_panel'], fg=C['text'],
+                             insertbackground='white', relief='flat', width=5)
+        ent_mat_w.pack(side='right')
+        tk.Label(tb, text='Material B×H (mm):', bg=C['bg_dark'], fg=C['muted']).pack(side='right', padx=(10, 4))
+
+        # Ob die Gebaeudekontur MIT Fensterscheiben (outline_with_panes.dxf,
+        # die sichtbare Vorderseite -- siehe dxfExport._draw_outline_with_panes)
+        # links/rechts gerade auf den Rahmen beschnitten wird oder die Kontur
+        # dort ueber den Rahmen hinausragen darf (z.B. wenn das Haus an dieser
+        # Seite schmaler/schiefer als der Rahmen ist und der Ueberstand
+        # gewuenscht ist). Betrifft NUR diese eine Datei -- NICHT outline.dxf
+        # (die blanke, rein rechteckige Rueckseite, dxfExport._draw_outline_only,
+        # die IMMER an allen 4 Seiten gerade beschnitten wird) und NICHT unten
+        # (dort wird immer beschnitten, siehe export_outline_with_panes_dxf-Aufruf
+        # in _export_project). Default = an (bisheriges Verhalten).
+        self.v_clip_right = tk.BooleanVar(value=True)
+        tk.Checkbutton(tb, text='Rechts abschneiden', variable=self.v_clip_right,
+                      bg=C['bg_dark'], fg=C['text'], selectcolor=C['bg_panel'],
+                      activebackground=C['bg_dark'], activeforeground=C['text'],
+                      font=('Segoe UI', 9), highlightthickness=0, bd=0,
+                      takefocus=0).pack(side='right', padx=(10, 4))
+        self.v_clip_left = tk.BooleanVar(value=True)
+        tk.Checkbutton(tb, text='Links abschneiden', variable=self.v_clip_left,
+                      bg=C['bg_dark'], fg=C['text'], selectcolor=C['bg_panel'],
+                      activebackground=C['bg_dark'], activeforeground=C['text'],
+                      font=('Segoe UI', 9), highlightthickness=0, bd=0,
+                      takefocus=0).pack(side='right', padx=4)
+
         tk.Frame(tb, bg=C['border'], width=1).pack(side='right', fill='y', padx=8, pady=8)
         ttk.Button(tb, text='🪄 Auto platzieren', command=self._auto_place, takefocus=0).pack(side='right', padx=2, pady=6)
         tk.Frame(tb, bg=C['border'], width=1).pack(side='right', fill='y', padx=8, pady=8)
@@ -1549,6 +1628,22 @@ class App:
                 'ezdxf ist nicht installiert (pip install ezdxf) -- Export nicht verfuegbar.')
             return
 
+        # Materialgroesse aus dem Toolbar-Eingabefeld (siehe _build) -- leer/
+        # ungueltig/<=0 bedeutet kein Limit (footprintScale.nest_parts_sheet
+        # waechst dann wie bisher zu einem einzigen, beliebig hohen Blatt).
+        material_size_mm = None
+        try:
+            mat_w = float(self.v_material_w.get().replace(',', '.'))
+            mat_h = float(self.v_material_h.get().replace(',', '.'))
+            if mat_w > 0 and mat_h > 0:
+                material_size_mm = (mat_w, mat_h)
+                # Persistiert, damit dieselbe Materialgroesse beim naechsten
+                # Start dieses Tools nicht erneut eingetragen werden muss
+                # (siehe load_material_size in _build).
+                save_material_size(mat_w, mat_h)
+        except ValueError:
+            pass
+
         index_path = HOUSES_DIR / 'images.json'
         if not index_path.is_file():
             messagebox.showinfo('Projekt-Export', 'Keine Häuser gefunden (public/houses/images.json fehlt).')
@@ -1617,6 +1712,43 @@ class App:
                 sheet_items: list = []
                 frame_rect = None
 
+                # Platzierungs-Nummern (siehe dxfExport._insert_placement_numbers/
+                # footprintScale.nest_parts_sheet's `labels`) -- ZWEI
+                # VONEINANDER UNABHAENGIGE Nummern-Folgen statt einer
+                # gemeinsamen: eine PRO DISTINKTER width_mm (fuer die
+                # Bodenplatte) und eine PRO DISTINKTER height_mm (fuer beide
+                # Seitenteil-Varianten) -- NICHT eine gemeinsame Nummer pro
+                # (width_mm, height_mm)-Paar, denn Bodenplatte und Seitenteil
+                # haengen NUR von je EINER Dimension ab (siehe
+                # get_bottom_plate_points/get_side_plate_points): eine
+                # Bodenplatte passt in JEDEN Footprint dieser Breite,
+                # unabhaengig von dessen Hoehe. Wuerde man stattdessen nach
+                # dem VOLLEN (width_mm, height_mm)-Paar gruppieren, bekaemen
+                # zwei Platzierungen mit gleicher Breite aber
+                # unterschiedlicher Hoehe faelschlich unterschiedliche
+                # Bodenplatten-Nummern, obwohl ihre Bodenplatten physisch
+                # identisch und untereinander austauschbar sind. Zahlen 1..N
+                # in AUFSTEIGENDER Groessen-Reihenfolge vergeben (kleinste
+                # Breite/Hoehe = 1), damit die Nummerierung nachvollziehbar/
+                # stabil ist statt von der zufaelligen Reihenfolge in
+                # house_data['ledBatches'] abzuhaengen. Diese SELBEN Nummern
+                # erscheinen sowohl auf der Hauszeichnung (an JEDER
+                # Fensterposition mit passender Breite/Hoehe) als auch auf
+                # jeder zugehoerigen Bodenplatten-/Seitenteil-Kopie im
+                # kombinierten Teile-Blatt.
+                leds_by_variant_for_numbering: dict = {}
+                for led in entries:
+                    leds_by_variant_for_numbering.setdefault(led.get('variantUuid'), []).append(led)
+                variant_sizes = {
+                    vu: dxfExport.resolve_footprint_size(variant_size, leds)
+                    for vu, leds in leds_by_variant_for_numbering.items()
+                }
+                width_numbers = {w: i + 1 for i, w in enumerate(sorted({w for w, h in variant_sizes.values()}))}
+                height_numbers = {h: i + 1 for i, h in enumerate(sorted({h for w, h in variant_sizes.values()}))}
+                placement_numbers = {
+                    vu: (width_numbers[w], height_numbers[h]) for vu, (w, h) in variant_sizes.items()
+                }
+
                 if entries:
                     written.append(dxfExport.export_dxf(
                         entries, outline, exported_dir / f'{name}_house_led_overview.dxf',
@@ -1629,11 +1761,23 @@ class App:
                         # wuerde dieselbe Datei mehrfach mit unterschiedlicher
                         # Stueckzahl im Namen ueberschrieben (siehe
                         # csvExport.get_part_counts, dieselbe Aufsummierung).
+                        # Bodenplatten-/Seitenteil-Kopien im kombinierten
+                        # Blatt bekommen ALLE dieselbe Nummer wie andere
+                        # Kopien ihrer eigenen Breiten-/Hoehen-Gruppe (siehe
+                        # width_numbers/height_numbers oben) -- eine
+                        # eigenstaendige Liste pro Platzierung ist dafuer
+                        # nicht noetig, die Nummer haengt ja nur noch von
+                        # width_mm bzw. height_mm ab, nicht mehr von der
+                        # Platzierungs-Identitaet.
+                        by_placement: dict = {}
+                        for e in entries:
+                            by_placement.setdefault(e['variantUuid'], []).append(e)
                         width_counts: dict = {}
                         height_counts: dict = {}
-                        for (width_mm, height_mm), count in size_counts.items():
-                            width_counts[width_mm] = width_counts.get(width_mm, 0) + count
-                            height_counts[height_mm] = height_counts.get(height_mm, 0) + count
+                        for variant_uuid, leds in by_placement.items():
+                            width_mm, height_mm = dxfExport.resolve_footprint_size(variant_size, leds)
+                            width_counts[width_mm] = width_counts.get(width_mm, 0) + 1
+                            height_counts[height_mm] = height_counts.get(height_mm, 0) + 1
 
                         for width_mm, count in sorted(width_counts.items()):
                             bp_count = count * csvExport.BOTTOM_PLATES_PER_PLACEMENT
@@ -1642,7 +1786,8 @@ class App:
                             bp_path.parent.mkdir(parents=True, exist_ok=True)
                             bp_doc.saveas(str(bp_path))
                             written.append(bp_path)
-                            sheet_items.append((bp_doc, count))
+                            bp_labels = [width_numbers[width_mm]] * bp_count
+                            sheet_items.append((bp_doc, bp_count, bp_labels))
 
                         for height_mm, count in sorted(height_counts.items()):
                             for kind, inner, multiplier in (
@@ -1654,7 +1799,8 @@ class App:
                                 sp_path = exported_dir / f'{sp_count}_sideplate-{kind}-{height_mm:g}mm.dxf'
                                 sp_doc.saveas(str(sp_path))
                                 written.append(sp_path)
-                                sheet_items.append((sp_doc, sp_count))
+                                sp_labels = [height_numbers[height_mm]] * sp_count
+                                sheet_items.append((sp_doc, sp_count, sp_labels))
 
                 if outline is not None:
                     # Glasscheiben-Ausschnitte, NICHT die vollen Fensterrahmen
@@ -1690,7 +1836,8 @@ class App:
 
                     panes_path = exported_dir / f'{csvExport.OUTLINE_WITH_PANES_COUNT}_{name}_outline_with_panes.dxf'
                     written.append(dxfExport.export_outline_with_panes_dxf(
-                        outline, panes, panes_path, entries, variant_size, variant_leds, frame_rect))
+                        outline, panes, panes_path, entries, variant_size, variant_leds, frame_rect,
+                        placement_numbers, clip_left=self.v_clip_left.get(), clip_right=self.v_clip_right.get()))
                     outline_path = exported_dir / f'{csvExport.OUTLINE_ONLY_COUNT}_{name}_outline.dxf'
                     written.append(dxfExport.export_outline_only_dxf(outline, outline_path, frame_rect))
 
@@ -1731,8 +1878,9 @@ class App:
                     sheet_items.append((top_hole_doc, 1))
 
                 if sheet_items:
-                    written.append(footprintScale.nest_parts_sheet(
-                        sheet_items, exported_dir / f'{name}_parts_combined.dxf'))
+                    written.extend(footprintScale.nest_parts_sheet(
+                        sheet_items, exported_dir / f'{name}_parts_combined.dxf',
+                        material_size_mm=material_size_mm))
 
                 rows = csvExport.get_part_counts(house_data, variant, outline, house_name=name,
                                                 frame_rect=frame_rect)
@@ -2937,7 +3085,7 @@ class App:
         cv.create_rectangle(ox0, oy0, ox1, oy1, outline=C['green'], width=2, dash=(4, 3))
 
         frame_rect_mm = (left / px_per_mm, top / px_per_mm, right / px_per_mm, bottom / px_per_mm)
-        for hx, hy, hw, hh in dxfExport.frame_side_hole_rects_mm(frame_rect_mm):
+        for hx, hy, hw, hh, _open_side in dxfExport.frame_side_hole_rects_mm(frame_rect_mm):
             hp0 = i2s(hx * px_per_mm, hy * px_per_mm)
             hp1 = i2s((hx + hw) * px_per_mm, (hy + hh) * px_per_mm)
             cv.create_rectangle(*hp0, *hp1, outline=C['orange'], fill=C['orange'])

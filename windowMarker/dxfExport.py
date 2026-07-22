@@ -41,29 +41,22 @@ Rect = Union[dict, tuple]   # {'x','y','w','h'} oder (x, y, w, h[, ...])
 DEFAULT_DPI = 150.0   # falls house_data['dpi'] fehlt (identisch zu ledBatchEditor.DEFAULT_DPI)
 
 # ── Gehaeuseteile: Gebaeudekontur (mit/ohne Fensterscheiben) ────────────────
-# Layer-Namen der beiden eigenstaendigen Gehaeuseteil-DXFs (siehe
+# ALLE tatsaechlich geschnittenen Entities beider Gehaeuseteil-DXFs (siehe
 # export_outline_with_panes_dxf/export_outline_only_dxf weiter unten) --
-# damit edit_outline_with_panes_dxf/edit_outline_only_dxf beim Aktualisieren
-# einer BEREITS exportierten Datei gezielt NUR ihre eigenen Entities
-# ersetzen koennen, ohne andere, vom Nutzer manuell in derselben Datei
-# ergaenzte Layer (z.B. von Hand berechnete Seitenteile/Verbinder) anzutasten.
-OUTLINE_PANES_LAYER = 'HOUSE_OUTLINE_PANES'
-OUTLINE_ONLY_LAYER = 'HOUSE_OUTLINE'
-# Eigener Layer NUR fuer die Footprint-Ausschnitte auf der "mit
-# Fensterscheiben"-Kontur (siehe _draw_outline_with_panes) -- getrennt von
-# OUTLINE_PANES_LAYER, damit sie im CAD-Programm unabhaengig von den
-# Fensteroeffnungen ein-/ausgeblendet werden koennen UND damit
-# _replace_layer_entities() sie beim Aktualisieren (edit_outline_with_panes_dxf)
-# zuverlaessig wiederfindet -- ohne dieses Layer-Tag wuerden Footprint-
-# Konturen sonst auf ihrem Default-Layer '0' landen (siehe
-# _insert_footprints), auf dem `_replace_layer_entities(OUTLINE_PANES_LAYER)`
-# sie nicht faende.
-OUTLINE_PANES_FOOTPRINT_LAYER = 'HOUSE_OUTLINE_PANES_FOOTPRINTS'
-# Eigener Layer fuer die Loecher, die die Rahmenleisten (siehe
-# footprintScale.get_frame_side_points/get_frame_top_points) in beide
-# Gehaeuseteil-Konturen schneiden (siehe frame_side_hole_rects_mm) -- aus
-# demselben Grund wie OUTLINE_PANES_FOOTPRINT_LAYER separat gehalten.
-OUTLINE_FRAME_HOLES_LAYER = 'HOUSE_OUTLINE_FRAME_HOLES'
+# Aussenkontur, Glasscheiben-Ausschnitte, Footprint-Zungen-Loecher UND
+# Rahmenleisten-Loecher -- landen ALLE auf demselben footprintScale.
+# CUT_LAYER (frueher vier getrennte Layer): EIN Schnitt-Layer pro Datei,
+# damit ein Laser-Programm nicht mehrere Cut-Layer einzeln aktivieren muss.
+# edit_outline_with_panes_dxf/edit_outline_only_dxf raeumen beim
+# Aktualisieren einer BEREITS exportierten Datei gezielt NUR diesen (und
+# footprintScale.ENGRAVE_LAYER, siehe _insert_placement_numbers) per
+# _replace_layer_entities() auf, ohne andere, vom Nutzer manuell in
+# derselben Datei ergaenzte Layer (z.B. von Hand berechnete Seitenteile/
+# Verbinder) anzutasten.
+OUTLINE_PANES_LAYER = footprintScale.CUT_LAYER
+OUTLINE_ONLY_LAYER = footprintScale.CUT_LAYER
+OUTLINE_PANES_FOOTPRINT_LAYER = footprintScale.CUT_LAYER
+OUTLINE_FRAME_HOLES_LAYER = footprintScale.CUT_LAYER
 
 
 class Outline:
@@ -148,36 +141,60 @@ def _clip_halfplane(points: list, keep, intersect) -> list:
     return out
 
 
-def clip_outline_to_frame(polylines: list, frame_left: float, frame_right: float,
-                          frame_bottom: float) -> list:
+def clip_outline_to_frame(polylines: list, frame_left: float | None, frame_right: float | None,
+                          frame_bottom: float, frame_top: float | None = None) -> list:
     """Beschneidet `polylines` (siehe Outline.polylines, ECHTE mm) auf
     LINKS/RECHTS/UNTEN gerade Kanten bei frame_left/frame_right/
-    frame_bottom -- OBEN wird NICHT beschnitten (dort darf die Kontur ueber
-    den Rahmen hinausragen, z.B. ein Dachgiebel), siehe Modul-Docstring.
-    Reines Halbebenen-Clipping (Sutherland-Hodgman, siehe _clip_halfplane),
-    funktioniert auch fuer eine NICHT konvexe Kontur, solange sie dabei
-    zusammenhaengend bleibt. Polygone, die komplett ausserhalb landen,
-    fallen weg (leere Punktliste wird uebersprungen)."""
+    frame_bottom. `frame_left`/`frame_right`/`frame_top` sind je OPTIONAL
+    (Default fuer `frame_top` None): OHNE eine dieser Kanten wird dort NICHT
+    beschnitten (die Kontur darf dort ueber den Rahmen hinausragen, z.B. ein
+    Dachgiebel oben oder ein bewusst ueberstehendes Haus links/rechts --
+    siehe _draw_outline_with_panes' `clip_left`/`clip_right`, per Haken in
+    der Toolbar umschaltbar, siehe led_batch_editor._build); MIT einer Kante
+    wird dort gerade abgeschnitten (so verwendet von _draw_outline_only, der
+    blanken RUECKSEITE ohne Fensterscheiben, IMMER an allen 4 Seiten -- die
+    braucht keine Haken, siehe dort). `frame_bottom` ist NICHT optional --
+    unten wird immer beschnitten. Reines Halbebenen-Clipping
+    (Sutherland-Hodgman, siehe _clip_halfplane), funktioniert auch fuer eine
+    NICHT konvexe Kontur, solange sie dabei zusammenhaengend bleibt.
+    Polygone, die komplett ausserhalb landen, fallen weg (leere Punktliste
+    wird uebersprungen)."""
     result = []
     for poly in polylines:
         pts = list(poly)
-        pts = _clip_halfplane(pts, lambda p: p[0] >= frame_left,
-                             lambda a, b: (frame_left, a[1] + (frame_left - a[0]) * (b[1] - a[1]) / (b[0] - a[0])))
-        pts = _clip_halfplane(pts, lambda p: p[0] <= frame_right,
-                             lambda a, b: (frame_right, a[1] + (frame_right - a[0]) * (b[1] - a[1]) / (b[0] - a[0])))
+        if frame_left is not None:
+            pts = _clip_halfplane(pts, lambda p: p[0] >= frame_left,
+                                 lambda a, b: (frame_left, a[1] + (frame_left - a[0]) * (b[1] - a[1]) / (b[0] - a[0])))
+        if frame_right is not None:
+            pts = _clip_halfplane(pts, lambda p: p[0] <= frame_right,
+                                 lambda a, b: (frame_right, a[1] + (frame_right - a[0]) * (b[1] - a[1]) / (b[0] - a[0])))
         pts = _clip_halfplane(pts, lambda p: p[1] <= frame_bottom,
                              lambda a, b: (a[0] + (frame_bottom - a[1]) * (b[0] - a[0]) / (b[1] - a[1]), frame_bottom))
+        if frame_top is not None:
+            pts = _clip_halfplane(pts, lambda p: p[1] >= frame_top,
+                                 lambda a, b: (a[0] + (frame_top - a[1]) * (b[0] - a[0]) / (b[1] - a[1]), frame_top))
         if pts:
             result.append(pts)
     return result
 
 
-def frame_side_hole_rects_mm(frame_rect: tuple) -> list:
-    """(x, y, w, h)-Rechtecke (ECHTE Haus-mm), die die wiederkehrenden
-    Laengskanten-Zungen der 4 Rahmenleisten (footprintScale.
+def frame_side_hole_rects_mm(frame_rect: tuple, clip_top: bool = False,
+                             clip_left: bool = True, clip_right: bool = True) -> list:
+    """(x, y, w, h, open_side)-Rechtecke (ECHTE Haus-mm), die die
+    wiederkehrenden Laengskanten-Zungen der 4 Rahmenleisten (footprintScale.
     get_frame_side_points fuer links/rechts, get_frame_top_points fuer
     oben/unten -- siehe frame_strip_tongue_hole_positions) in die
     Hauskontur schneiden. `frame_rect` = (left, top, right, bottom).
+
+    `clip_left`/`clip_right` (analog zu `clip_top`, siehe unten): NUR wenn
+    die Kontur auf der jeweiligen Seite ueberhaupt gerade beschnitten wird
+    (siehe _draw_outline_with_panes' gleichnamige Parameter/
+    clip_outline_to_frame) liegt dort eine echte Kontur-Kante an, an die das
+    Loch buendig anschliesst -- dann muss es 'left'/'right'-offen bleiben,
+    sonst wuerde die gemeinsame Kante doppelt geschnitten. Ist diese Seite
+    NICHT beschnitten (die Kontur ragt dort frei ueber den Rahmen hinaus),
+    gibt es keine solche Kante -- das Loch bleibt dann ein normales
+    geschlossenes Rechteck (open_side=None), exakt wie beim `clip_top`-Fall.
 
     Links/rechts-Leisten laufen VERTIKAL (ihre eigene Laengsachse = die
     Haus-Y-Achse) -- deren lokale (x, y, w, h)-Loecher werden daher um 90°
@@ -190,19 +207,31 @@ def frame_side_hole_rects_mm(frame_rect: tuple) -> list:
     daher unveraendert `frame_left/top + ly` uebernommen. Fuer die MAX-Kante
     (rechts/unten) zeigt 'nach aussen' andersrum (groessere Werte) -- daher
     hier gespiegelt (`frame_right/bottom - ly - lh`), sonst wuerden die
-    Loecher dort faelschlich ins Hausinnere statt in den Rand ragen."""
+    Loecher dort faelschlich ins Hausinnere statt in den Rand ragen.
+
+    `open_side` (5. Tupel-Element, siehe DxfDrawing.add_rect): die AEUSSERE
+    Kante jedes Lochs (links/rechts/unten) liegt IMMER exakt auf der
+    aussen um die Materialstaerke erweiterten Kontur-Grenze (siehe
+    clip_outline_to_frame) -- dort auf 'closed' zu zeichnen wuerde diese
+    Kante doppelt schneiden, daher immer offen. Die OBERE Kante liegt nur
+    dann auf einer echten Kontur-Grenze, wenn diese Seite ueberhaupt
+    beschnitten wird (`clip_top=True`, siehe _draw_outline_only) -- bei der
+    sichtbaren Vorderseite (_draw_outline_with_panes, `clip_top=False`,
+    Dachgiebel-Ueberstand bleibt oben unbeschnitten) gibt es dort KEINE
+    Kontur-Linie zum Anschliessen, die oberen Loecher bleiben also normale
+    geschlossene Rechtecke."""
     frame_left, frame_top, frame_right, frame_bottom = frame_rect
     side_length = frame_bottom - frame_top
     top_length = frame_right - frame_left
     rects = []
     for lx, ly, lw, lh in footprintScale.frame_strip_tongue_hole_positions(side_length):
         y = frame_top + lx
-        rects.append((frame_left + ly, y, lh, lw))
-        rects.append((frame_right - ly - lh, y, lh, lw))
+        rects.append((frame_left + ly, y, lh, lw, 'left' if clip_left else None))
+        rects.append((frame_right - ly - lh, y, lh, lw, 'right' if clip_right else None))
     for lx, ly, lw, lh in footprintScale.frame_strip_tongue_hole_positions(top_length):
         x = frame_left + lx
-        rects.append((x, frame_top + ly, lw, lh))
-        rects.append((x, frame_bottom - ly - lh, lw, lh))
+        rects.append((x, frame_top + ly, lw, lh, 'top' if clip_top else None))
+        rects.append((x, frame_bottom - ly - lh, lw, lh, 'bottom'))
     return rects
 
 
@@ -265,15 +294,34 @@ class DxfDrawing:
         return -y
 
     def add_rect(self, x: float, y: float, w: float, h: float,
-                *, layer: str = 'WINDOWS', color: int = 3) -> None:
+                *, layer: str = 'WINDOWS', color: int = 3,
+                open_side: str | None = None) -> None:
         """Rechteck an Position (x, y) [linke obere Ecke, BILD-Konvention]
         mit Breite w und Hoehe h -- wie bei den Fenster-Eintraegen in
         <name>.json. Die Y-Achse wird beim Zeichnen automatisch in
-        CAD-Konvention gespiegelt (siehe _fy)."""
+        CAD-Konvention gespiegelt (siehe _fy).
+
+        `open_side` ('left'/'right'/'top'/'bottom', BILD-Konvention wie bei
+        (x, y) selbst -- 'top' = die y-Kante, 'bottom' = die y+h-Kante):
+        WENN eine Kante dieses Rechtecks exakt mit einer ANDEREN, bereits
+        vorhandenen Kontur-Linie zusammenfaellt (z.B. ein Zungen-Loch, das
+        buendig an der beschnittenen Hauskontur liegt, siehe
+        frame_side_hole_rects_mm) wuerde diese Kante sonst DOPPELT
+        gezeichnet/geschnitten -- `open_side` laesst genau diese eine Kante
+        weg (offene 3-seitige Linie statt geschlossenem Rechteck)."""
         self._ensure_layer(layer, color)
-        y, yh = self._fy(y), self._fy(y + h)
-        pts = [(x, y), (x + w, y), (x + w, yh), (x, yh)]
-        self.msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer})
+        yt, yb = self._fy(y), self._fy(y + h)
+        if open_side is None:
+            pts = [(x, yt), (x + w, yt), (x + w, yb), (x, yb)]
+            self.msp.add_lwpolyline(pts, close=True, dxfattribs={'layer': layer})
+            return
+        order = {
+            'top':    [(x, yt), (x, yb), (x + w, yb), (x + w, yt)],
+            'bottom': [(x, yb), (x, yt), (x + w, yt), (x + w, yb)],
+            'left':   [(x, yt), (x + w, yt), (x + w, yb), (x, yb)],
+            'right':  [(x + w, yt), (x, yt), (x, yb), (x + w, yb)],
+        }[open_side]
+        self.msp.add_lwpolyline(order, close=False, dxfattribs={'layer': layer})
 
     def add_line(self, x1: float, y1: float, x2: float, y2: float,
                 *, layer: str = 'WIRING', color: int = 5) -> None:
@@ -442,22 +490,32 @@ def _replace_layer_entities(dwg: 'DxfDrawing', layer: str) -> None:
 def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', panes: list,
                              entries: list | None = None, variant_size: tuple | None = None,
                              variant_leds: list | None = None,
-                             frame_rect: tuple | None = None) -> None:
+                             frame_rect: tuple | None = None,
+                             placement_numbers: dict | None = None,
+                             clip_left: bool = True, clip_right: bool = True) -> None:
     """Zeichnet den echten Gebaeude-Umriss (siehe Outline.polylines) MIT
     ALLEN Glasscheiben-Ausschnitten aus `panes` (bereits in ECHTEN mm, siehe
     get_placed_leds()'s Umrechnung -- NUR die tatsaechliche Glasflaeche, z.B.
     windowTool._svg_rects()/house_data['glassPanes']: einzeln markierte
     Scheiben PLUS jedes Fenster ohne eigene Scheiben-Unterteilung als Ganzes
-    -- NICHT der volle Fensterrahmen, der Rahmen selbst bleibt Material) auf
-    Layer OUTLINE_PANES_LAYER, PLUS (falls `entries` angegeben, siehe
-    get_placed_leds()) je Platzierung NUR deren Zungen-Loecher/Ausschnitte
-    (Layer 'PINS', siehe footprintScale.get_footprint_points) auf
-    OUTLINE_PANES_FOOTPRINT_LAYER -- dieselben Positionen wie im LED-/
-    Platinen-Export (siehe _insert_footprints), damit die Bodenplatten-/
-    Seitenteil-Zungen spaeter durch genau diese Loecher passen. OHNE die
-    reine Skizzen-Aussenlinie (Layer 'SKETCH') -- die ist nur eine
-    Ausrichthilfe beim Editieren, kein echter Schnitt (siehe _insert_
-    footprints' `only_layers`).
+    -- NICHT der volle Fensterrahmen, der Rahmen selbst bleibt Material)
+    PLUS (falls `entries` angegeben, siehe get_placed_leds()) je Platzierung
+    NUR deren Zungen-Loecher/Ausschnitte (siehe footprintScale.
+    get_footprint_points) -- dieselben Positionen wie im LED-/Platinen-
+    Export (siehe _insert_footprints), damit die Bodenplatten-/Seitenteil-
+    Zungen spaeter durch genau diese Loecher passen. OHNE die reine
+    Skizzen-Aussenlinie (Layer 'SKETCH') -- die ist nur eine Ausrichthilfe
+    beim Editieren, kein echter Schnitt (siehe _insert_footprints'
+    `only_layers`). Kontur, Scheiben-Ausschnitte, Footprint-Loecher UND
+    Rahmenleisten-Loecher landen ALLE auf demselben OUTLINE_PANES_LAYER
+    (== footprintScale.CUT_LAYER) -- EIN Schnitt-Layer fuer die ganze Datei.
+
+    `placement_numbers` ({variantUuid: nummer}, siehe led_batch_editor.
+    App._export_project): WENN angegeben, wird an JEDER Platzierung ihre
+    Nummer graviert (footprintScale.ENGRAVE_LAYER, siehe
+    _insert_placement_numbers) -- dieselbe Nummer wie auf den zugehoerigen
+    Bodenplatten-/Seitenteil-Kopien im kombinierten Teile-Blatt, damit sich
+    jedes geschnittene Teil eindeutig seinem Fenster zuordnen laesst.
 
     `frame_rect` ((left, top, right, bottom), ECHTE mm, siehe
     clip_outline_to_frame): WENN angegeben, wird die Kontur links/rechts/
@@ -470,12 +528,22 @@ def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', panes: list,
     sonst waeren die Loecher ausserhalb der geschnittenen Flaeche. `top`
     wird hier nicht gebraucht (nur links/rechts/unten werden beschnitten),
     bleibt aber Teil der Signatur fuer den gemeinsamen (left,top,right,
-    bottom)-Rahmen-Tupel, das auch die Rahmenleisten-Laengen bestimmt."""
+    bottom)-Rahmen-Tupel, das auch die Rahmenleisten-Laengen bestimmt.
+
+    `clip_left`/`clip_right` (Default True = bisheriges Verhalten): schalten
+    JE EINZELN ab, ob links/rechts ueberhaupt beschnitten wird -- per Haken
+    in der Toolbar umschaltbar (siehe led_batch_editor._build/
+    _export_project), z.B. wenn das Haus an einer Seite bewusst ueber den
+    Rahmen hinausragen soll. Wirkt NUR hier (der sichtbaren Vorderseite mit
+    Fensterscheiben) -- die blanke Rueckseite (_draw_outline_only) wird
+    davon unabhaengig IMMER an allen 4 Seiten gerade beschnitten."""
     polylines = outline.polylines
     if frame_rect is not None:
         frame_left, _frame_top, frame_right, frame_bottom = frame_rect
         thick = footprintScale.FRAME_MATERIAL_THICKNESS_MM
-        polylines = clip_outline_to_frame(polylines, frame_left - thick, frame_right + thick,
+        polylines = clip_outline_to_frame(polylines,
+                                         frame_left - thick if clip_left else None,
+                                         frame_right + thick if clip_right else None,
                                          frame_bottom + thick)
     for poly in polylines:
         dwg.add_polyline(poly, closed=True, layer=OUTLINE_PANES_LAYER, color=7)
@@ -483,24 +551,31 @@ def _draw_outline_with_panes(dwg: 'DxfDrawing', outline: 'Outline', panes: list,
         dwg.add_rect(p['x'], p['y'], p['w'], p['h'], layer=OUTLINE_PANES_LAYER, color=6)
     if entries:
         _insert_footprints(dwg, entries, variant_size, layer=OUTLINE_PANES_FOOTPRINT_LAYER,
-                          variant_leds=variant_leds, only_layers={'PINS'})
+                          variant_leds=variant_leds, only_layers={footprintScale.CUT_LAYER})
+        if placement_numbers:
+            _insert_placement_numbers(dwg, entries, placement_numbers, variant_size, variant_leds)
     if frame_rect is not None:
-        for x, y, w, h in frame_side_hole_rects_mm(frame_rect):
-            dwg.add_rect(x, y, w, h, layer=OUTLINE_FRAME_HOLES_LAYER, color=6)
+        for x, y, w, h, open_side in frame_side_hole_rects_mm(frame_rect, clip_top=False,
+                                                              clip_left=clip_left, clip_right=clip_right):
+            dwg.add_rect(x, y, w, h, layer=OUTLINE_FRAME_HOLES_LAYER, color=6, open_side=open_side)
 
 
 def export_outline_with_panes_dxf(outline: 'Outline', panes: list, out_path,
                                   entries: list | None = None,
                                   variant_size: tuple | None = None,
                                   variant_leds: list | None = None,
-                                  frame_rect: tuple | None = None) -> Path:
+                                  frame_rect: tuple | None = None,
+                                  placement_numbers: dict | None = None,
+                                  clip_left: bool = True, clip_right: bool = True) -> Path:
     """Schreibt EINE NEUE DXF-Datei mit dem Gebaeude-Umriss + allen
     Glasscheiben-Ausschnitten + (mit `entries`) den Zungen-Loechern
     ("Gebaeudekontur mit Fensterscheiben"). Ueberschreibt `out_path`
     komplett -- fuer eine bereits exportierte Datei stattdessen zu
-    AKTUALISIEREN (statt zu ueberschreiben), siehe edit_outline_with_panes_dxf()."""
+    AKTUALISIEREN (statt zu ueberschreiben), siehe edit_outline_with_panes_dxf().
+    `clip_left`/`clip_right` siehe _draw_outline_with_panes."""
     dwg = DxfDrawing()
-    _draw_outline_with_panes(dwg, outline, panes, entries, variant_size, variant_leds, frame_rect)
+    _draw_outline_with_panes(dwg, outline, panes, entries, variant_size, variant_leds,
+                            frame_rect, placement_numbers, clip_left, clip_right)
     return dwg.save(out_path)
 
 
@@ -508,42 +583,48 @@ def edit_outline_with_panes_dxf(outline: 'Outline', panes: list, path,
                                 entries: list | None = None,
                                 variant_size: tuple | None = None,
                                 variant_leds: list | None = None,
-                                frame_rect: tuple | None = None) -> Path:
+                                frame_rect: tuple | None = None,
+                                placement_numbers: dict | None = None,
+                                clip_left: bool = True, clip_right: bool = True) -> Path:
     """Aktualisiert die Gebaeudekontur + Glasscheiben-Ausschnitte + Zungen-
-    Loecher in einer BEREITS exportierten DXF-Datei bei `path` (per
-    DxfDrawing.load() geoeffnet) -- ersetzt dazu nur die vorhandenen
-    Entities auf OUTLINE_PANES_LAYER und OUTLINE_PANES_FOOTPRINT_LAYER
-    (siehe _replace_layer_entities), laesst aber ALLES ANDERE in der Datei
-    (z.B. vom Nutzer manuell auf eigenen Layern ergaenzte Seitenteile/
-    Verbinder) unangetastet. Existiert `path` noch nicht, verhaelt sich das
-    wie export_outline_with_panes_dxf() (legt die Datei neu an)."""
+    Loecher + Platzierungs-Nummern in einer BEREITS exportierten DXF-Datei
+    bei `path` (per DxfDrawing.load() geoeffnet) -- ersetzt dazu nur die
+    vorhandenen Entities auf OUTLINE_PANES_LAYER und footprintScale.
+    ENGRAVE_LAYER (siehe _replace_layer_entities), laesst aber ALLES ANDERE
+    in der Datei (z.B. vom Nutzer manuell auf eigenen Layern ergaenzte
+    Seitenteile/Verbinder) unangetastet. Existiert `path` noch nicht,
+    verhaelt sich das wie export_outline_with_panes_dxf() (legt die Datei
+    neu an). `clip_left`/`clip_right` siehe _draw_outline_with_panes."""
     path = Path(path)
     dwg = DxfDrawing.load(path) if path.is_file() else DxfDrawing()
     _replace_layer_entities(dwg, OUTLINE_PANES_LAYER)
-    _replace_layer_entities(dwg, OUTLINE_PANES_FOOTPRINT_LAYER)
-    _replace_layer_entities(dwg, OUTLINE_FRAME_HOLES_LAYER)
-    _draw_outline_with_panes(dwg, outline, panes, entries, variant_size, variant_leds, frame_rect)
+    _replace_layer_entities(dwg, footprintScale.ENGRAVE_LAYER)
+    _draw_outline_with_panes(dwg, outline, panes, entries, variant_size, variant_leds,
+                            frame_rect, placement_numbers, clip_left, clip_right)
     return dwg.save(path)
 
 
 def _draw_outline_only(dwg: 'DxfDrawing', outline: 'Outline',
                        frame_rect: tuple | None = None) -> None:
     """Zeichnet NUR den echten Gebaeude-Umriss (siehe Outline.polylines),
-    OHNE Fensteroeffnungen, auf Layer OUTLINE_ONLY_LAYER. `frame_rect` --
-    siehe _draw_outline_with_panes -- beschneidet links/rechts/unten an der
-    AEUSSEREN Rahmenkante (frame_rect + Materialstaerke), oben bleibt die
-    Kontur unveraendert."""
+    OHNE Fensteroeffnungen, auf OUTLINE_ONLY_LAYER (== footprintScale.
+    CUT_LAYER, EIN Schnitt-Layer wie ueberall sonst). `frame_rect` --
+    beschneidet links/rechts/unten UND oben an der AEUSSEREN Rahmenkante
+    (frame_rect +/- Materialstaerke) -- anders als _draw_outline_with_panes
+    (die sichtbare Vorderseite, dort bleibt oben ein Dachgiebel-Ueberstand
+    bewusst erhalten): diese blanke Rueckseite ohne Fensterscheiben braucht
+    den Ueberstand nicht und wird komplett gerade abgeschnitten."""
     polylines = outline.polylines
     if frame_rect is not None:
-        frame_left, _frame_top, frame_right, frame_bottom = frame_rect
+        frame_left, frame_top, frame_right, frame_bottom = frame_rect
         thick = footprintScale.FRAME_MATERIAL_THICKNESS_MM
         polylines = clip_outline_to_frame(polylines, frame_left - thick, frame_right + thick,
-                                         frame_bottom + thick)
+                                         frame_bottom + thick, frame_top - thick)
     for poly in polylines:
         dwg.add_polyline(poly, closed=True, layer=OUTLINE_ONLY_LAYER, color=7)
     if frame_rect is not None:
-        for x, y, w, h in frame_side_hole_rects_mm(frame_rect):
-            dwg.add_rect(x, y, w, h, layer=OUTLINE_FRAME_HOLES_LAYER, color=6)
+        for x, y, w, h, open_side in frame_side_hole_rects_mm(frame_rect, clip_top=True):
+            dwg.add_rect(x, y, w, h, layer=OUTLINE_FRAME_HOLES_LAYER, color=6, open_side=open_side)
 
 
 def export_outline_only_dxf(outline: 'Outline', out_path, frame_rect: tuple | None = None) -> Path:
@@ -609,7 +690,13 @@ def _footprint_scaled_points(width_mm: float, height_mm: float,
     EIGENSTAENDIGES ezdxf-Dokument zurueck (nicht nur rohe Punkte) -- die
     LWPOLYLINE-Punkte werden hier aus dessen modelspace() ausgelesen, damit
     der Rest dieses Moduls (Anker/Uebersetzung, Y-Flip beim Zeichnen) wie
-    gewohnt mit reinen (x, y)-Punktlisten weiterarbeiten kann.
+    gewohnt mit reinen (x, y)-Punktlisten weiterarbeiten kann. Gibt eine
+    Liste von (points, closed)-Paaren zurueck -- `closed` wird 1:1 von der
+    Quell-Entity uebernommen (siehe get_footprint_points' `open_side`:
+    Loecher, deren eine Kante buendig an der SKETCH-Aussenkontur liegt,
+    sind dort BEWUSST offen/3-seitig, damit diese Kante nicht doppelt
+    gezeichnet/geschnitten wird -- diese Offenheit muss beim Wiedereinfuegen
+    erhalten bleiben, siehe _insert_footprints).
 
     `only_layers` (z.B. `{'PINS'}`): WENN angegeben, werden NUR Polylinien
     von genau diesen Layern uebernommen -- get_footprint_points() legt neben
@@ -634,7 +721,7 @@ def _footprint_scaled_points(width_mm: float, height_mm: float,
     entities = msp.query('LWPOLYLINE')
     if only_layers is not None:
         entities = [e for e in entities if e.dxf.layer in only_layers]
-    return [[(pt[0], height_mm - pt[1]) for pt in e.get_points()] for e in entities]
+    return [([(pt[0], height_mm - pt[1]) for pt in e.get_points()], e.closed) for e in entities]
 
 
 def _footprint_placement_transform(leds: list, width_mm: float, height_mm: float,
@@ -739,9 +826,63 @@ def _insert_footprints(dwg: 'DxfDrawing', entries: list,
         if not polylines:
             continue
         transform = _footprint_placement_transform(leds, width_mm, height_mm, variant_leds)
-        for poly in polylines:
+        for poly, closed in polylines:
             pts = [transform(fx, fy) for fx, fy in poly]
-            dwg.add_polyline(pts, closed=True, layer=layer or '0', color=7)
+            dwg.add_polyline(pts, closed=closed, layer=layer or '0', color=7)
+
+
+def _insert_placement_numbers(dwg: 'DxfDrawing', entries: list, placement_numbers: dict,
+                              variant_size: tuple | None = None,
+                              variant_leds: list | None = None) -> None:
+    """Graviert (auf footprintScale.ENGRAVE_LAYER, NIE auf dem Schnitt-Layer
+    -- eine Gravur darf nicht versehentlich mitgeschnitten werden) an JEDER
+    Platzierung (gruppiert nach variantUuid, wie _insert_footprints) an
+    JEDER der 5 Zungen-Loch-Positionen aus footprintScale.
+    footprint_hole_anchors (bottom/outer_left/outer_right/inner_left/
+    inner_right) die passende Nummer -- NICHT mittig auf der gesamten
+    Footprint-Flaeche: die Bodenplatte steckt nur im 'bottom'-Loch, die
+    AEUSSEREN Seitenteile nur in 'outer_left'/'outer_right', die INNEREN nur
+    in 'inner_left'/'inner_right' -- die Nummer soll also genau DORT stehen,
+    wo das jeweilige Teil tatsaechlich eingesteckt wird, statt an einer
+    Stelle, die keinem der Teile eindeutig zugeordnet werden kann.
+
+    `placement_numbers` ({variantUuid: (width_number, height_number)}, aus
+    led_batch_editor.App._export_project): ZWEI VONEINANDER UNABHAENGIGE
+    Nummern-Folgen -- `width_number` fuer die Bodenplatte (haengt NUR von
+    width_mm ab, siehe get_bottom_plate_points -- passt in JEDEN Footprint
+    dieser Breite, unabhaengig von dessen Hoehe) an der 'bottom'-Position,
+    `height_number` fuer BEIDE Seitenteil-Varianten (haengen NUR von
+    height_mm ab, siehe get_side_plate_points -- passen in JEDEN Footprint
+    dieser Hoehe, unabhaengig von dessen Breite) an 'outer_left'/
+    'outer_right'/'inner_left'/'inner_right'. EINE gemeinsame (width_mm, height_mm)-
+    "Baugruppen"-Nummer waere hier FALSCH: zwei Platzierungen mit gleicher
+    Breite aber unterschiedlicher Hoehe brauchen z.B. physisch IDENTISCHE
+    (austauschbare) Bodenplatten -- eine gemeinsame Nummer nur bei exakt
+    gleichem (Breite, Hoehe)-Paar wuerde ihnen faelschlich unterschiedliche
+    Bodenplatten-Nummern geben.
+    Platzierungen ohne Eintrag in `placement_numbers` (sollte nicht
+    vorkommen, aber schadet nicht) werden einfach uebersprungen."""
+    leds_by_variant: dict = {}
+    for led in entries:
+        leds_by_variant.setdefault(led.get('variantUuid'), []).append(led)
+    label_h = max(1.5, (footprintScale.TONGUE_DEPTH_MM - footprintScale.TONGUE_HOLE_UNDERSIZE_MM) * 0.8)
+    for variant_uuid, leds in leds_by_variant.items():
+        numbers = placement_numbers.get(variant_uuid)
+        if numbers is None:
+            continue
+        width_number, height_number = numbers
+        width_mm, height_mm = resolve_footprint_size(variant_size, leds)
+        transform = _footprint_placement_transform(leds, width_mm, height_mm, variant_leds)
+        anchors = footprintScale.footprint_hole_anchors(width_mm, height_mm)
+        for key, (local_x, local_y) in anchors.items():
+            number = width_number if key == 'bottom' else height_number
+            # anchors sind PHYSISCHE Konvention (Y=0=Unterkante, wie
+            # get_footprint_points) -- transform() erwartet BILD-Konvention
+            # (siehe _footprint_scaled_points), daher hier dieselbe Spiegelung
+            # (height_mm - y).
+            x, y = transform(local_x, height_mm - local_y)
+            dwg.add_text(str(number), x, y, height=label_h,
+                        layer=footprintScale.ENGRAVE_LAYER, color=3)
 
 
 def export_dxf(entries: list, outline: Outline | None = None, out_path=None,
@@ -798,8 +939,11 @@ def export_dxf(entries: list, outline: Outline | None = None, out_path=None,
         label_offset[key] = n + 1
         cx, cy = _rect_center(led)
         label_h = led['h'] * 0.18
+        # Gravur (Text), NICHT auf demselben Layer wie das Fenster-Rechteck
+        # (das ist ein Schnitt/Referenz-Layer) -- siehe Modul-weites Prinzip:
+        # EIN Layer fuer Schnitte, EIN eigener fuer alles Graviert-/Beschriftete.
         dwg.add_text(str(led['ledIndex']), cx, cy - n * label_h,
-                    height=label_h, layer=layer, color=color)
+                    height=label_h, layer=footprintScale.ENGRAVE_LAYER, color=color)
 
     # Footprint-Groesse ist PRO PLATZIERUNG eintragbar (ledBatches[].width_mm/
     # height_mm, siehe get_placed_leds()) -- fehlt sie fuer eine Platzierung,
